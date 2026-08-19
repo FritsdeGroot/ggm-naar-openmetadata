@@ -1,111 +1,123 @@
-# Contributing
+# Bijdragen
 
-Thank you for your interest in this project. Contributions are welcome from
-municipalities, data governance consultants, and anyone working with the
-Gemeentelijk Gegevensmodel (GGM) or OpenMetadata.
-
----
-
-## Ways to contribute
-
-### Bug reports and questions
-
-Please [open an issue](../../issues) for:
-- Errors or unexpected behaviour in the scripts
-- Incorrect mappings in the JSON source files (wrong domain, missing definition,
-  incorrect disambiguation suffix)
-- Questions about adapting the pipeline to a different municipality or GGM version
-
-When reporting a bug, include:
-- The command you ran (with flags)
-- The relevant output lines (especially any `FOUT`-lines)
-- Your OpenMetadata version
-- Your Python version (`python3 --version`)
-
-### Improvements and new features
-
-Open an issue to discuss your idea before submitting a pull request. This helps
-avoid duplicate effort and ensures the change fits the project's scope.
-
-Good candidates for contributions:
-- **Extraction scripts**: scripts to regenerate `ggm_objecttypen.json`,
-  `ggm_attributen.json` and `ggm_relaties_per_object.json` from a new GGM XMI
-  export are not yet in this repository — this is the most useful missing piece
-- **New GGM version**: updated JSON source files for a newer GGM release
-- **Municipality-specific overrides**: examples of `DOMAIN_FQN_OVERRIDES` or
-  filtered objecttype sets for a specific municipality
-- **OpenMetadata version compatibility**: fixes or notes for newer OM versions
-- **PII/classification layer**: mapping GGM attributes to AVG categories or
-  Woo information categories
-
-### Documentation
-
-Corrections to the README, CHANGELOG or inline script docstrings are always
-welcome, including translations to Dutch.
+Bedankt voor je interesse in dit project. Bijdragen zijn welkom van gemeenten,
+data governance-consultants en iedereen die werkt met het Gemeentelijk
+Gegevensmodel (GGM) of OpenMetadata.
 
 ---
 
-## Development setup
+## Hoe kun je bijdragen?
+
+### Bugs melden en vragen stellen
+
+[Open een issue](../../issues) voor:
+- Fouten of onverwacht gedrag in de scripts
+- Onjuiste mappings in de JSON-bronbestanden (verkeerd domein, ontbrekende
+  definitie, foutieve disambiguatie-suffix)
+- Vragen over het aanpassen van de pipeline voor een andere gemeente of
+  GGM-versie
+
+Voeg bij een bug graag toe:
+- Het commando dat je hebt gedraaid (inclusief vlaggen)
+- De relevante outputregels (met name regels met `FOUT`)
+- Je OpenMetadata-versie
+- Je Python-versie (`python3 --version`)
+
+### Verbeteringen en nieuwe functies
+
+Open eerst een issue om je idee te bespreken voordat je een pull request
+indient. Zo voorkom je dubbel werk en kun je afstemmen of de wijziging past
+binnen de scope van het project.
+
+Goede kandidaten voor bijdragen:
+- **Extractiescripts verfijnen**: `extract_ggm.py` genereert de JSON-bronbestanden
+  automatisch, maar bij een nieuwe GGM-versie kunnen er aanpassingen nodig zijn
+  aan de extractielogica of de databereiniging
+- **Nieuwe GGM-versie**: bijgewerkte handmatige bronbestanden (`ggm_definities.json`,
+  `ggm_pad_naar_domain.json`, `ggm_naam_disambiguatie.json`) voor een nieuwe
+  GGM-release in een nieuwe `data/vX.Y.Z/`-map
+- **Gemeente-specifieke aanpassingen**: voorbeelden van `DOMAIN_FQN_OVERRIDES`
+  of gefilterde objecttype-sets voor een specifieke gemeente
+- **OpenMetadata-versiecompatibiliteit**: fixes of notities voor nieuwere
+  OM-versies
+- **PII-/classificatielaag**: koppeling van GGM-attributen aan AVG-categorieën
+  of Woo-informatiecategorieën
+
+### Documentatie
+
+Correcties in de README, CHANGELOG of scriptdocstrings zijn altijd welkom.
+
+---
+
+## Lokaal aan de slag
 
 ```bash
-git clone https://github.com/<your-org>/<this-repo>.git
-cd <this-repo>
+git clone https://github.com/FritsdeGroot/ggm-naar-openmetadata-.git
+cd ggm-naar-openmetadata-
 pip install requests --break-system-packages
 ```
 
-Copy the environment variables to your shell:
+Omgevingsvariabelen instellen:
 ```bash
-export OM_HOST="http://<your-openmetadata-host>:8585"
-export OM_JWT_TOKEN="<your-bot-token>"
+export OM_HOST="http://<jouw-openmetadata-host>:8585"
+export OM_JWT_TOKEN="<jouw-bot-token>"
 ```
 
-Test against a single small domain before running `--alle`:
+Bronbestanden genereren voor de versie die je wilt testen:
 ```bash
-python3 ggm_objecttypen_naar_openmetadata.py --domein "Economie" --met-attributen --met-relaties
+python3 extract_ggm.py --versie v2.5.1
+```
+
+Test altijd eerst op een klein domein voordat je `--alle` draait:
+```bash
+python3 ggm_objecttypen_naar_openmetadata.py --versie v2.5.1 --domein "Economie" --met-attributen --met-relaties
 ```
 
 ---
 
-## Pull request checklist
+## Checklist voor een pull request
 
-- [ ] Scripts are tested against a running OpenMetadata instance (even a local
-      Docker CE instance) for the affected domains
-- [ ] JSON source files that change are validated with Python's `json.load()`
-- [ ] The CHANGELOG.md `[Unreleased]` section is updated with a short description
-      of the change
-- [ ] No XMI files, log files or `*_raw.json` intermediates are committed
-      (see `.gitignore`)
-- [ ] Commit messages are in English and describe *what* changed and *why*
+- [ ] Scripts zijn getest tegen een draaiende OpenMetadata-instantie voor de
+      betreffende domeinen (ook een lokale Docker CE-instantie volstaat)
+- [ ] Gewijzigde JSON-bronbestanden zijn gevalideerd met `python3 -c
+      "import json; json.load(open('bestand.json'))"`
+- [ ] De sectie `[Unreleased]` in `CHANGELOG.md` is bijgewerkt met een korte
+      omschrijving van de wijziging
+- [ ] Geen XMI-bestanden, logbestanden of `*_raw.json`-tussenbestanden meegecommit
+      (zie `.gitignore`)
+- [ ] Commit-berichten zijn in het Engels en beschrijven *wat* er is gewijzigd
+      en *waarom*
 
 ---
 
-## Adapting to a different municipality
+## Aanpassen voor een andere gemeente
 
-This pipeline was developed for Gemeente Delft's GGM v2.5.1. To use it for
-another municipality with the same GGM version:
+Deze pipeline is ontwikkeld op basis van GGM v2.5.1 van Gemeente Delft. Voor
+een andere gemeente met dezelfde GGM-versie:
 
-1. Set up a fresh OpenMetadata instance and configure `OM_HOST` / `OM_JWT_TOKEN`
-2. All JSON source files are GGM-version-specific and municipality-independent —
-   they can be reused as-is
-3. Check whether municipality-specific domain name overrides are needed in
+1. Zet een eigen OpenMetadata-instantie op en stel `OM_HOST` en `OM_JWT_TOKEN` in
+2. Genereer de bronbestanden: `python3 extract_ggm.py --versie v2.5.1`
+3. De handmatige bronbestanden in `data/v2.5.1/` zijn GGM-versie-specifiek en
+   gemeente-onafhankelijk — die kun je ongewijzigd hergebruiken
+4. Controleer of gemeente-specifieke domeinnaaminstellingen nodig zijn in
    `DOMAIN_FQN_OVERRIDES` (in `ggm_objecttypen_naar_openmetadata.py`)
-4. Run the pipeline as described in the README
+5. Draai de pipeline zoals beschreven in de README
 
-To use it with a **new GGM version**, see the "New GGM version" section in the
-README and the extraction scripts (once available in the `extract/` directory).
-
----
-
-## Code style
-
-- Python: follow the existing style (PEP 8, descriptive variable names in Dutch
-  where consistent with the domain, English elsewhere)
-- JSON files: formatted with `indent=2`, `ensure_ascii=False`
-- Commit language: English
+Voor een **nieuwe GGM-versie**, zie de sectie "Bij een nieuwe GGM-versie" in
+de README.
 
 ---
 
-## Licence
+## Codestijl
 
-By submitting a pull request, you agree that your contribution will be licensed
-under the [EUPL 1.2](LICENSE).
+- Python: volg de bestaande stijl (PEP 8, beschrijvende variabelenamen in het
+  Nederlands waar consistent met het domein, Engels elders)
+- JSON-bestanden: opgemaakt met `indent=2` en `ensure_ascii=False`
+- Commit-berichten: Engels
+
+---
+
+## Licentie
+
+Door een pull request in te dienen ga je ermee akkoord dat je bijdrage wordt
+gepubliceerd onder de [EUPL 1.2](LICENSE).

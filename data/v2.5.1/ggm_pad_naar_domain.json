@@ -1,0 +1,63 @@
+{
+  "_comment": "Mapping van XMI packagepad (eerste 2-3 segmenten, zonder 'Model ...'/'Diagram') naar de Domain-FQN zoals geladen via ggm_naar_openmetadata_domains.py. Paden die hier niet voorkomen, vallen terug op alleen het hoofddomein (eerste segment, zonder voorloopnummer).",
+
+  "0 Bestuur, Politiek en Ondersteuning > Griffie": "Bestuur, Politiek en Ondersteuning.Griffie",
+
+  "1 Veiligheid en Vergunningen": "Veiligheid en Vergunningen",
+
+  "2 Verkeer, Vervoer en Waterstaat > Mobiliteit": "Verkeer, Vervoer en waterstaat.Mobiliteit",
+  "2 Verkeer, Vervoer en Waterstaat > Parkeren": "Verkeer, Vervoer en waterstaat.Parkeren",
+
+  "3 Economie": "Economie",
+
+  "4 Onderwijs > Leerplicht en Leerlingenvervoer": "Onderwijs.Leerplicht en leerlingenvervoer",
+  "4 Onderwijs > Onderwijs": "Onderwijs.Onderwijs (subdomein)",
+
+  "5 Sport, Cultuur en Recreatie > Erfgoed > Archeologie": "Sport, Cultuur en Recreatie.Erfgoed.Archeologie",
+  "5 Sport, Cultuur en Recreatie > Erfgoed > Archief": "Sport, Cultuur en Recreatie.Erfgoed.Archief",
+  "5 Sport, Cultuur en Recreatie > Erfgoed > Generieke Entiteiten Erfgoed": "Sport, Cultuur en Recreatie.Erfgoed.Generieke objecttypen Erfgoed",
+  "5 Sport, Cultuur en Recreatie > Erfgoed > Monumenten": "Sport, Cultuur en Recreatie.Erfgoed.Monumenten",
+  "5 Sport, Cultuur en Recreatie > Musea": "Sport, Cultuur en Recreatie.Musea",
+  "5 Sport, Cultuur en Recreatie > Sport": "Sport, Cultuur en Recreatie.Sport",
+
+  "6 Sociaal Domein > Dak- en thuislozen": "Sociaal domein.Dak- en thuislozen",
+  "6 Sociaal Domein > Gemeentebegrafenissen": "Sociaal domein.Gemeentebegraven",
+  "6 Sociaal Domein > Generiek Jeugd en Wmo": "Sociaal domein.Wmo en Jeugd",
+  "6 Sociaal Domein > Inburgering": "Sociaal domein.Inburgering",
+  "6 Sociaal Domein > Inkomen > Diensten": "Sociaal domein.Inkomen",
+  "6 Sociaal Domein > Inkomen": "Sociaal domein.Inkomen",
+  "6 Sociaal Domein > Inkomen > Normafwijking": "Sociaal domein.Inkomen",
+  "6 Sociaal Domein > Inkomen > Reden aanvraag": "Sociaal domein.Inkomen",
+  "6 Sociaal Domein > Inkomen > Terug- en invordering": "Sociaal domein.Inkomen",
+  "6 Sociaal Domein > Jeugdbescherming en reclassering": "Sociaal domein.Wmo en Jeugd",
+  "6 Sociaal Domein > Schulden > Schuldhulpverlening": "Sociaal domein.Schulden.Schuldhulverlening",
+  "6 Sociaal Domein > Schulden > Vroegsignalering": "Sociaal domein.Schulden.Vroegsignalering",
+  "6 Sociaal Domein > Sociaal Domein Generiek": "Sociaal domein.Generieke definities Sociaal Domein",
+  "6 Sociaal Domein > Sociaal Domein Generiek > Model Sociaal Domein Generiek > Inkomsten": "Sociaal domein.Generieke definities Sociaal Domein",
+  "6 Sociaal Domein > Sociaal Domein Generiek > Model Sociaal Domein Generiek > Vermogen": "Sociaal domein.Generieke definities Sociaal Domein",
+  "6 Sociaal Domein > Sociale Teams": "Sociaal domein.Sociale Teams",
+  "6 Sociaal Domein > Werk": "Sociaal domein.Werk",
+
+  "7 Volksgezondheid en Milieu > Afval": "Volksgezondheid en milieu.Afval",
+
+  "8 Volkshuisvesting, Leefomgeving en Stedelijke Vernieuwing > Beheer Openbare Ruimte > Model Basis IMBOR": "Volkshuisvesting, leefomgeving en stedelijke vernieuwing.Openbare ruimte",
+  "8 Volkshuisvesting, Leefomgeving en Stedelijke Vernieuwing > Beheer Openbare Ruimte": "Volkshuisvesting, leefomgeving en stedelijke vernieuwing.Openbare ruimte",
+  "8 Volkshuisvesting, Leefomgeving en Stedelijke Vernieuwing > Bouwen en Wonen": "Volkshuisvesting, leefomgeving en stedelijke vernieuwing.Bouwen en wonen",
+  "8 Volkshuisvesting, Leefomgeving en Stedelijke Vernieuwing > Omgevingswet": "Volkshuisvesting, leefomgeving en stedelijke vernieuwing.Omgevingswet",
+
+  "9 Interne Organisatie > Financien": "Interne organisatie.Financiën",
+  "9 Interne Organisatie > HR": "Interne organisatie.HR",
+  "9 Interne Organisatie > ICT": "Interne organisatie.ICT",
+  "9 Interne Organisatie > Inkoop": "Interne organisatie.Inkoop",
+  "9 Interne Organisatie > Organisatie-indeling": "Interne organisatie",
+  "9 Interne Organisatie > Subsidies": "Interne organisatie.Subsidies",
+  "9 Interne Organisatie > Vastgoed": "Interne organisatie.Gemeentelijk Vastgoed",
+
+  "10 Dienstverlening": "Dienstverlening",
+
+  "99 Kern > BAG": "Kern.BAG",
+  "99 Kern > Dimensies": "Kern",
+  "99 Kern > Generiek": "Kern",
+  "99 Kern > RGBZPlus": "Kern.RGBZ",
+  "99 Kern > RSGBPlus": "Kern.RSGB"
+}

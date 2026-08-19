@@ -1,0 +1,30 @@
+# Gegenereerde bronbestanden per versie (aangemaakt door extract_ggm.py)
+# De handmatige bestanden (ggm_definities.json, ggm_pad_naar_domain.json,
+# ggm_naam_disambiguatie.json) worden WEL meegenomen in de repo.
+data/*/ggm_objecttypen.json
+data/*/ggm_attributen.json
+data/*/ggm_relaties_per_object.json
+data/*/ggm_domeinen_skos.jsonld
+data/*/ggm_xmi.xml
+data/*/ggm_mkdocs.yml
+data/*/ggm_attributen_raw.json
+data/*/ggm_relaties_raw.json
+
+# Logbestanden van script-runs
+run_*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

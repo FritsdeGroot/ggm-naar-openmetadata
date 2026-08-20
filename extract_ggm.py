@@ -44,6 +44,11 @@ try:
 except ImportError:
     sys.exit("Installeer requests: pip install requests --break-system-packages")
 
+try:
+    import yaml
+except ImportError:
+    sys.exit("Installeer pyyaml: pip install pyyaml --break-system-packages")
+
 
 # ==============================================================================
 # GGM-repository configuratie
@@ -141,6 +146,65 @@ def normalize_mult(m):
         return None
     hi_str = "*" if hi_i == -1 else str(hi_i)
     return f"{lo_i}..{hi_str}"
+
+
+def slugify(text):
+    import re
+    text = text.strip().lower()
+    for old, new in {"ë":"e","é":"e","è":"e","ï":"i","ü":"u","ç":"c","&":"en"}.items():
+        text = text.replace(old, new)
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    return re.sub(r"-+", "-", text).strip("-")
+
+
+def build_skos(mkdocs_path):
+    """Genereer SKOS-conceptenschema uit de mkdocs.yml-navigatiestructuur."""
+    GGM_BASE = "https://www.gemeentelijkgegevensmodel.nl/"
+    SCHEME_URI = GGM_BASE + "id/conceptscheme/ggm-domeinen"
+
+    with open(mkdocs_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+
+    def find_domeinen(nav):
+        for item in nav:
+            if isinstance(item, dict):
+                for key, value in item.items():
+                    if key.strip().lower() == "beschrijving domeinen":
+                        return value
+        raise ValueError("Sectie 'Beschrijving Domeinen' niet gevonden in mkdocs.yml nav.")
+
+    def walk(nav_items, parent_id, parent_uri, concepts, top_concepts, level=1):
+        for item in nav_items:
+            if isinstance(item, str):
+                continue
+            for label, value in item.items():
+                if label.strip().lower() == "inleiding":
+                    continue
+                slug = slugify(label)
+                cid = f"{parent_id}--{slug}" if parent_id else slug
+                curi = f"{GGM_BASE}id/concept/{cid}"
+                concept = {"@id": curi, "@type": "skos:Concept",
+                           "skos:inScheme": {"@id": SCHEME_URI},
+                           "skos:prefLabel": {"@value": label, "@language": "nl"},
+                           "ggm:niveau": level}
+                if parent_uri is None:
+                    concept["skos:topConceptOf"] = {"@id": SCHEME_URI}
+                    top_concepts.append({"@id": curi})
+                else:
+                    concept["skos:broader"] = {"@id": parent_uri}
+                concepts.append(concept)
+                if isinstance(value, list) and any(isinstance(v, dict) for v in value):
+                    walk(value, cid, curi, concepts, top_concepts, level + 1)
+
+    concepts, top_concepts = [], []
+    walk(find_domeinen(data["nav"]), None, None, concepts, top_concepts)
+    return {
+        "@context": {"skos": "http://www.w3.org/2004/02/skos/core#",
+                     "dct": "http://purl.org/dc/terms/",
+                     "ggm": "https://www.gemeentelijkgegevensmodel.nl/id/def/"},
+        "@graph": [{"@id": SCHEME_URI, "@type": "skos:ConceptScheme",
+                    "skos:hasTopConcept": top_concepts}] + concepts,
+    }
 
 
 # ==============================================================================
@@ -577,8 +641,24 @@ def main():
         print("\nKlaar (alleen-downloaden modus).")
         return
 
+    print(f"\nStap 2: Parsen en extraheren ...")
+
+    # --- SKOS domeinstructuur ---
+    print("  Domeinstructuur (SKOS) ...")
+    mkdocs_pad = download_mkdocs(ref, uitvoer)
+    if mkdocs_pad:
+        try:
+            skos = build_skos(str(mkdocs_pad))
+            skos_pad = uitvoer / "ggm_domeinen_skos.jsonld"
+            skos_pad.write_text(json.dumps(skos, ensure_ascii=False, indent=2), encoding="utf-8")
+            n_concepts = len([n for n in skos["@graph"] if n.get("@type") == "skos:Concept"])
+            print(f"  → {skos_pad} ({n_concepts} concepten)")
+        except Exception as e:
+            print(f"  WAARSCHUWING: SKOS-generatie mislukt: {e}")
+    else:
+        print("  SKOS overgeslagen (geen mkdocs.yml).")
+
     # --- Parsen ---
-    print("\nStap 2: Parsen en extraheren ...")
     root = parse_xmi(xmi_pad)
 
     # --- Objecttypen ---

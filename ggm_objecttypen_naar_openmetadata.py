@@ -365,21 +365,24 @@ def get_or_create_attribute_term(session, glossary_fqn, parent_fqn, parent_displ
         related = term.get("relatedTerms") or []
         related_fqns = {r.get("fullyQualifiedName") for r in related}
         if related_term_fqn not in related_fqns:
-            related_ref = {"type": "glossaryTerm", "fullyQualifiedName": related_term_fqn}
-            patch = [{
-                "op": "add" if not related else "replace",
-                "path": "/relatedTerms",
-                "value": related + [related_ref],
-            }]
-            patch_url = f"{session.base_url}/api/v1/glossaryTerms/{term['id']}"
-            patch_resp = session.patch(
-                patch_url, data=json.dumps(patch),
-                headers={"Content-Type": "application/json-patch+json"},
-            )
-            if patch_resp.ok:
-                status += " + relatedTerm gekoppeld"
-            else:
-                status += f" + FOUT bij relatedTerm {patch_resp.status_code}: {patch_resp.text}"
+            # Controleer of de doelterm bestaat voordat we patchen (500-bug bij null UUID)
+            check = session.get(f"{session.base_url}/api/v1/glossaryTerms/name/{related_term_fqn}")
+            if check.status_code == 200:
+                related_ref = {"type": "glossaryTerm", "fullyQualifiedName": related_term_fqn}
+                patch = [{
+                    "op": "add" if not related else "replace",
+                    "path": "/relatedTerms",
+                    "value": related + [related_ref],
+                }]
+                patch_url = f"{session.base_url}/api/v1/glossaryTerms/{term['id']}"
+                patch_resp = session.patch(
+                    patch_url, data=json.dumps(patch),
+                    headers={"Content-Type": "application/json-patch+json"},
+                )
+                if patch_resp.ok:
+                    status += " + relatedTerm gekoppeld"
+                else:
+                    status += f" + FOUT bij relatedTerm {patch_resp.status_code}: {patch_resp.text}"
 
     return own_fqn, status
 
@@ -477,11 +480,18 @@ def get_or_create_term(session, glossary_fqn, name, description, domain=None, ta
     if related_term_fqns:
         related = term.get("relatedTerms") or []
         related_fqns = {r.get("fullyQualifiedName") for r in related}
-        nieuwe = [
-            {"type": "glossaryTerm", "fullyQualifiedName": fqn}
-            for fqn in related_term_fqns
-            if fqn not in related_fqns and fqn != own_fqn
-        ]
+
+        # Controleer per doelterm of deze al bestaat — OpenMetadata geeft een
+        # 500 (null UUID) als de doelterm nog niet bestaat bij de PATCH.
+        # Sla niet-bestaande doeltermen over; een volgende run is zelf-herstellend.
+        nieuwe = []
+        for fqn in related_term_fqns:
+            if fqn in related_fqns or fqn == own_fqn:
+                continue
+            check = session.get(f"{session.base_url}/api/v1/glossaryTerms/name/{fqn}")
+            if check.status_code == 200:
+                nieuwe.append({"type": "glossaryTerm", "fullyQualifiedName": fqn})
+
         if nieuwe:
             patch = [{
                 "op": "add" if not related else "replace",

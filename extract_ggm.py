@@ -53,12 +53,15 @@ GGM_REPO_OWNER = "Gemeente-Delft"
 GGM_REPO_NAME = "Gemeentelijk-Gegevensmodel"
 GGM_DEFAULT_VERSIE = "master"
 
-# Pad naar de XMI-export binnen de repository
-# Let op: dit pad kan per versie/branch afwijken — check de repo als het mislukt
-GGM_XMI_PADEN = [
-    "Gemeentelijk Gegevensmodel XMI2.1.xml",             # root (sommige versies)
-    "model/Gemeentelijk Gegevensmodel XMI2.1.xml",       # model-submap
-]
+def xmi_paden_voor_versie(versie):
+    """Geeft de te proberen XMI-paden voor een specifieke versie/branch.
+    Het GGM slaat XMI-bestanden op in een versie-submap, bijv. v2.5.1/."""
+    return [
+        f"{versie}/Gemeentelijk Gegevensmodel XMI2.1.xml",   # meest voorkomend
+        f"{versie}/Gemeentelijk_Gegevensmodel.xml",           # alternatieve naam
+        "Gemeentelijk Gegevensmodel XMI2.1.xml",              # root (oudere versies)
+        "model/Gemeentelijk Gegevensmodel XMI2.1.xml",        # model-submap
+    ]
 
 GGM_MKDOCS_PAD = "mkdocs.yml"
 
@@ -163,13 +166,13 @@ def download_bestand(url, doel, label=""):
 
 def download_xmi(ref, uitvoer):
     xmi_pad = uitvoer / "ggm_xmi.xml"
-    for pad in GGM_XMI_PADEN:
+    for pad in xmi_paden_voor_versie(ref):
         url = github_raw_url(GGM_REPO_OWNER, GGM_REPO_NAME, ref, pad)
-        if download_bestand(url, xmi_pad, "GGM XMI-export"):
+        if download_bestand(url, xmi_pad, f"GGM XMI-export ({pad})"):
             return xmi_pad
     sys.exit(
         "XMI-bestand niet gevonden in de repository. Controleer de --versie/--branch "
-        "en pas GGM_XMI_PADEN aan in dit script als het pad is gewijzigd."
+        "of gebruik --xmi om een lokaal bestand op te geven."
     )
 
 

@@ -5,7 +5,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [1.0.0] — 2026-06-15
+## [1.0.0] — 2026-08-25
 
 Initial public release. Complete pipeline for loading GGM v2.5.1 into
 OpenMetadata Community Edition.
@@ -90,9 +90,15 @@ OpenMetadata Community Edition.
 
 ## [Unreleased]
 
-Possible future additions:
-- Extraction scripts for generating `ggm_objecttypen.json`, `ggm_attributen.json`
-  and `ggm_relaties_per_object.json` from a new GGM XMI export
+### To investigate
+- **947 vs 959 objecttypen**: `extract_ggm.py` genereert ~947 objecttypen terwijl de
+  oorspronkelijke handmatige extractie 959 opleverde. De 12 ontbrekende objecttypen zijn
+  nog niet geïdentificeerd — vergelijking van beide `ggm_objecttypen.json`-bestanden is
+  nodig om te bepalen of dit een filteringsverschil is in `extract_ggm.py` (bijv.
+  `DIAGRAM_PREFIX_PATTERN` of `clean_naam`) of een verschil in de XMI-versie die is
+  gebruikt.
+
+### Possible future additions
 - Support for `uml:AssociationClass` and `uml:DataType` elements
 - Automated PII/AVG classification layer aligned with Woo information categories
 - Support for OpenMetadata's Data Product entity type

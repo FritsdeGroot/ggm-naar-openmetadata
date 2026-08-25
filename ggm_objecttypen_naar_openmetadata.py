@@ -368,10 +368,10 @@ def get_or_create_attribute_term(session, glossary_fqn, parent_fqn, parent_displ
             for r in related
         }
         if related_term_fqn not in related_fqns:
-            # Controleer of de doelterm bestaat voordat we patchen (500-bug bij null UUID)
             check = session.get(f"{session.base_url}/api/v1/glossaryTerms/name/{related_term_fqn}")
             if check.status_code == 200:
-                related_ref = {"relationType": "isRelatedTo", "term": {"fullyQualifiedName": related_term_fqn}}
+                target_id = check.json().get("id")
+                related_ref = {"id": target_id, "type": "glossaryTerm"}
                 patch = [{
                     "op": "add" if not related else "replace",
                     "path": "/relatedTerms",
@@ -496,7 +496,8 @@ def get_or_create_term(session, glossary_fqn, name, description, domain=None, ta
                 continue
             check = session.get(f"{session.base_url}/api/v1/glossaryTerms/name/{fqn}")
             if check.status_code == 200:
-                nieuwe.append({"relationType": "isRelatedTo", "term": {"fullyQualifiedName": fqn}})
+                target_id = check.json().get("id")
+                nieuwe.append({"id": target_id, "type": "glossaryTerm"})
 
         if nieuwe:
             patch = [{

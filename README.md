@@ -16,7 +16,7 @@ Het resultaat is een doorzoekbare, domeingestructureerde **data-glossary** met:
 
 - Python 3.9+
 - `pip install requests --break-system-packages`
-- Self-hosted OpenMetadata Community Edition (getest op CE 1.x)
+- Self-hosted OpenMetadata Community Edition versie 2.x (getest op 2.0). Let op: versie 1.x wordt niet ondersteund — de relatedTerms API is gewijzigd tussen 1.x en 2.x.
 - Een bot/service-account met `Create`/`EditAll`/`ViewAll`-rechten op: Domain, Glossary, GlossaryTerm, Classification en Tag
 
 ---

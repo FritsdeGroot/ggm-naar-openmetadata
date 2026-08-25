@@ -5,7 +5,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [1.0.0] — 2026-08-25
+## [Unreleased] — wordt v1.0.0
 
 Initial public release. Complete pipeline for loading GGM v2.5.1 into
 OpenMetadata Community Edition.
@@ -88,9 +88,7 @@ OpenMetadata Community Edition.
 
 ---
 
-## [Unreleased]
-
-### To investigate
+## [To do / toekomstige versies]
 - **947 vs 959 objecttypen**: `extract_ggm.py` genereert ~947 objecttypen terwijl de
   oorspronkelijke handmatige extractie 959 opleverde. De 12 ontbrekende objecttypen zijn
   nog niet geïdentificeerd — vergelijking van beide `ggm_objecttypen.json`-bestanden is

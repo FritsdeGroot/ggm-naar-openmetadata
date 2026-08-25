@@ -363,12 +363,15 @@ def get_or_create_attribute_term(session, glossary_fqn, parent_fqn, parent_displ
 
     if related_term_fqn:
         related = term.get("relatedTerms") or []
-        related_fqns = {r.get("fullyQualifiedName") for r in related}
+        related_fqns = {
+            r.get("fullyQualifiedName") or r.get("term", {}).get("fullyQualifiedName")
+            for r in related
+        }
         if related_term_fqn not in related_fqns:
             # Controleer of de doelterm bestaat voordat we patchen (500-bug bij null UUID)
             check = session.get(f"{session.base_url}/api/v1/glossaryTerms/name/{related_term_fqn}")
             if check.status_code == 200:
-                related_ref = {"type": "glossaryTerm", "fullyQualifiedName": related_term_fqn}
+                related_ref = {"relationType": "isRelatedTo", "term": {"fullyQualifiedName": related_term_fqn}}
                 patch = [{
                     "op": "add" if not related else "replace",
                     "path": "/relatedTerms",
@@ -479,7 +482,10 @@ def get_or_create_term(session, glossary_fqn, name, description, domain=None, ta
 
     if related_term_fqns:
         related = term.get("relatedTerms") or []
-        related_fqns = {r.get("fullyQualifiedName") for r in related}
+        related_fqns = {
+            r.get("fullyQualifiedName") or r.get("term", {}).get("fullyQualifiedName")
+            for r in related
+        }
 
         # Controleer per doelterm of deze al bestaat — OpenMetadata geeft een
         # 500 (null UUID) als de doelterm nog niet bestaat bij de PATCH.
@@ -490,7 +496,7 @@ def get_or_create_term(session, glossary_fqn, name, description, domain=None, ta
                 continue
             check = session.get(f"{session.base_url}/api/v1/glossaryTerms/name/{fqn}")
             if check.status_code == 200:
-                nieuwe.append({"type": "glossaryTerm", "fullyQualifiedName": fqn})
+                nieuwe.append({"relationType": "isRelatedTo", "term": {"fullyQualifiedName": fqn}})
 
         if nieuwe:
             patch = [{

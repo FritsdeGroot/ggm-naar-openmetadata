@@ -371,7 +371,7 @@ def get_or_create_attribute_term(session, glossary_fqn, parent_fqn, parent_displ
             check = session.get(f"{session.base_url}/api/v1/glossaryTerms/name/{related_term_fqn}")
             if check.status_code == 200:
                 target_id = check.json().get("id")
-                related_ref = {"id": target_id, "type": "glossaryTerm"}
+                related_ref = {"relationType": "isRelatedTo", "term": {"id": target_id, "type": "glossaryTerm"}}
                 patch = [{
                     "op": "add" if not related else "replace",
                     "path": "/relatedTerms",
@@ -497,7 +497,7 @@ def get_or_create_term(session, glossary_fqn, name, description, domain=None, ta
             check = session.get(f"{session.base_url}/api/v1/glossaryTerms/name/{fqn}")
             if check.status_code == 200:
                 target_id = check.json().get("id")
-                nieuwe.append({"id": target_id, "type": "glossaryTerm"})
+                nieuwe.append({"relationType": "isRelatedTo", "term": {"id": target_id, "type": "glossaryTerm"}})
 
         if nieuwe:
             patch = [{

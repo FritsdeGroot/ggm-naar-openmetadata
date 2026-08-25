@@ -81,7 +81,7 @@ OpenMetadata Community Edition.
   such as `ProxyConnector`) and are excluded
 - `uml:AssociationClass` (6 elements, e.g. `Historische Rol`) and `uml:DataType`
   (11 elements, e.g. `Geldbedrag`) are not yet loaded
-- Requires OpenMetadata 2.x — the relatedTerms API payload changed between 1.x and 2.x (`type`/`fullyQualifiedName` → `relationType`/`term.fullyQualifiedName`)
+- Requires OpenMetadata 2.x — the relatedTerms API changed significantly between 1.x and 2.x: payload format is now `{"relationType": "relatedTo", "term": {"id": "<uuid>", "type": "glossaryTerm"}}`, the target term UUID must be resolved via a GET before patching, and `relationType` must be one of: relatedTo, synonym, antonym, broader, narrower, partOf, hasPart, calculatedFrom, usedToCalculate, seeAlso
 - `relatedTerms` links to objecttypes in a domain loaded later in the same run
   may be missing after the first `--alle` run; a second identical run is
   self-healing

@@ -3,8 +3,8 @@
 Scripts om het **Gemeentelijk Gegevensmodel (GGM)** van [Gemeente Delft](https://github.com/Gemeente-Delft/Gemeentelijk-Gegevensmodel) te laden in een **self-hosted OpenMetadata Community Edition**-omgeving via de REST API.
 
 Het resultaat is een doorzoekbare, domeingestructureerde **data-glossary** met:
-- **959 objecttypen** als Glossary Terms, elk gekoppeld aan hun (sub)domein en hoofddomein-tag
-- **4534 attributen** als child Glossary Terms (met type, definitie en eventuele waardelijst)
+- **~947 objecttypen** als Glossary Terms, elk gekoppeld aan hun (sub)domein en hoofddomein-tag (exact aantal afhankelijk van de GGM-versie en extractie)
+- **~4500 attributen** als child Glossary Terms (met type, definitie en eventuele waardelijst)
 - **425 relaties** tussen objecttypen (uit `uml:Association`) in de beschrijving en als klikbare `relatedTerms`
 - **49 domeinen** als OpenMetadata Domains (hiërarchisch, conform de GGM-packagestructuur)
 
@@ -24,6 +24,10 @@ Het resultaat is een doorzoekbare, domeingestructureerde **data-glossary** met:
 ## Snel aan de slag
 
 ```bash
+# 0. Repository ophalen
+git clone https://github.com/FritsdeGroot/ggm-naar-openmetadata-.git
+cd ggm-naar-openmetadata-
+
 # 1. Bronbestanden genereren uit de GGM-repo → opgeslagen in data/v2.5.1/
 python3 extract_ggm.py --versie v2.5.1
 
@@ -84,8 +88,8 @@ ggm-naar-openmetadata/
 | `ggm_definities.json` | ✅ ja | Domeindefinities (handmatig bijgehouden) |
 | `ggm_pad_naar_domain.json` | ✅ ja | XMI-packagepad → OpenMetadata Domain FQN (handmatig bijgehouden) |
 | `ggm_naam_disambiguatie.json` | ✅ ja | 136 disambiguaties voor niet-unieke objecttypenamen (handmatig bijgehouden) |
-| `ggm_objecttypen.json` | ❌ gegenereerd | 959 objecttypen met naam, definitie, pad, attributen en domein |
-| `ggm_attributen.json` | ❌ gegenereerd | 4534 attributen met type, definitie, waardelijst en objecttype-referenties |
+| `ggm_objecttypen.json` | ❌ gegenereerd | ~947 objecttypen met naam, definitie, pad, attributen en domein (exact aantal afhankelijk van GGM-versie) |
+| `ggm_attributen.json` | ❌ gegenereerd | ~4500 attributen met type, definitie, waardelijst en objecttype-referenties |
 | `ggm_relaties_per_object.json` | ❌ gegenereerd | 425 relaties (uit `uml:Association`), per objecttype gegroepeerd |
 | `ggm_domeinen_skos.jsonld` | ❌ gegenereerd | SKOS-conceptenschema van de volledige domeinstructuur |
 

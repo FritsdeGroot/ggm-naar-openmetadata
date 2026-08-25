@@ -189,6 +189,14 @@ of `status` na het eerste objecttype globaal conflicteren.
 
 ---
 
+## Citatie
+
+Dit project is gebouwd op het Gemeentelijk Gegevensmodel (GGM). Bij verwijzing naar het GGM zelf, gebruik de bronvermelding van de oorspronkelijke makers:
+
+> Brienen, A., & Ashkpour, A. (2019). *Gemeentelijk Gegevensmodel (GGM)*. Gemeente Delft. https://github.com/Gemeente-Delft/Gemeentelijk-Gegevensmodel
+
+---
+
 ## Licentie
 
 [EUPL 1.2](LICENSE)

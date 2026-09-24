@@ -28,3 +28,9 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Run- en migratierapporten en gegenereerde overzichten (v1.1.0)
+data/*/run_ggm_metadata_*.json
+data/*/migratie_eaid_*.json
+data/*/ggm_extractie_rapport.json
+data/*/ggm_modellen.json

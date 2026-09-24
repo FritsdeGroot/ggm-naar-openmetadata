@@ -8,6 +8,13 @@ Genereert:
     ggm_attributen.json           4534 attributen met type, definitie, waardelijst en referenties
     ggm_relaties_per_object.json  425 relaties (uml:Association) per objecttype
     ggm_domeinen_skos.jsonld      SKOS-domeinstructuur (vereist ook mkdocs.yml)
+    ggm_modellen.json             EA-packages (modellen) met hun documentatie
+    ggm_extractie_rapport.json    verantwoording: uitgesloten classes, duplicaten,
+                                  definitiebronnen en tagged-value-conflicten
+
+Sinds v1.1.0 krijgt elk objecttype en attribuut zijn Enterprise Architect-GUID
+(`ea_id`, bijv. EAID_F110608E_...) mee. Die blijft gelijk bij hernoemen en is
+daarmee de matchsleutel bij het herladen in OpenMetadata.
 
 Vereisten:
     pip install requests --break-system-packages
@@ -38,6 +45,11 @@ import argparse
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from pathlib import Path
+
+from ggm_xmi_metadata import (
+    verzamel_ea_metadata, splits_synoniemen, gemma_info,
+    objecttype_hash, attribuut_hash,
+)
 
 try:
     import requests
@@ -97,6 +109,11 @@ def clean_naam(naam):
     # Verwijder EA-package-prefix (::)
     if "::" in naam:
         naam = naam.split("::")[-1].strip()
+    # REVERSE_CLEAN-sleutels bevatten vaak '/' of '.', dus opzoeken vóór de
+    # vervanging hieronder (tot en met v1.0.0 gebeurde dit alleen erna, waardoor
+    # bijv. 'Periodiek dienst Bijz. bijstand' nooit werd omgezet).
+    if naam in REVERSE_CLEAN:
+        return REVERSE_CLEAN[naam]
     # Vervang / en . in namen
     naam = naam.replace("/", " of ").replace(".", "")
     naam = " ".join(naam.split())
@@ -277,23 +294,21 @@ def parse_xmi(xmi_pad):
 # Stap 1: Objecttypen extraheren
 # ==============================================================================
 
-def extraheer_objecttypen(root):
+def extraheer_objecttypen(root, meta, rapport):
     """
-    Extraheer alle uml:Class-elementen (objecttypen) uit de XMI,
-    inclusief GEMMA-definitie en attribuutlijst (naam + type).
-    Filtert ruis (Diagram-packages, null-namen, etc.).
+    Extraheer alle uml:Class-elementen (objecttypen) uit de XMI, met:
+      - ea_id        EA-GUID (stabiel bij hernoemen)
+      - definitie    uit de EA-documentatie van het element; valt terug op de
+                     tagged value 'GEMMA definitie' als die ontbreekt
+      - toelichting, synoniemen, gemma (url/naam/type/guid), ea (auteur, ...)
+      - attributenlijst (naam + type)
+    Filtert ruis (Diagram-packages, null-namen, etc.) en legt uitgesloten
+    classes vast in het extractierapport.
     """
-    # GEMMA_definitie per class-id
-    class_def = {}
-    for elem in root.iter():
-        tag = elem.tag.split("}")[-1]
-        if tag == "GEMMA_definitie":
-            base = elem.get("base_Class")
-            d = elem.get("GEMMA_definitie")
-            if base and d:
-                class_def[base] = d
-
+    elementen = meta["elementen"]
     objecttypen = []
+    uitgesloten = rapport.setdefault("uitgesloten_classes", [])
+    definitiebron = Counter()
 
     def walk(elem, pad):
         tag = elem.tag.split("}")[-1]
@@ -311,12 +326,18 @@ def extraheer_objecttypen(root):
         elif etype == "uml:Class":
             # Filter ruis
             if not naam:
+                uitgesloten.append({"ea_id": cls_id, "naam": naam, "reden": "geen naam"})
                 return
             if any(DIAGRAM_PREFIX_PATTERN.match(seg) for seg in pad):
+                uitgesloten.append({"ea_id": cls_id, "naam": naam, "pad": pad,
+                                    "reden": "in Diagram-package"})
                 return
             cleaned = clean_naam(naam)
             if not cleaned:
+                uitgesloten.append({"ea_id": cls_id, "naam": naam, "reden": "naam leeg na opschonen"})
                 return
+            info = elementen.get(cls_id, {})
+            tv = info.get("tags", {})
             # Attributen (naam + type uit ownedAttribute)
             attrs = []
             for oa in elem.findall("ownedAttribute"):
@@ -334,19 +355,44 @@ def extraheer_objecttypen(root):
             domein = norm_pad[0] if norm_pad else "Onbekend"
             # Verwijder domein-nummer-prefix (bijv. "1 Bestuur" → "Bestuur" voor weergave)
             domein_display = re.sub(r"^\d+\s+", "", domein)
-            objecttypen.append({
+
+            # Definitie: EA-documentatie is leidend (dit is ook wat
+            # gemeentelijkgegevensmodel.nl als 'Definitie' toont). Tot en met
+            # v1.0.0 werd alleen 'GEMMA definitie' gelezen, waardoor ruim de
+            # helft van de objecttypen zonder definitie bleef.
+            definitie = clean_definitie(info.get("documentatie"))
+            if definitie:
+                definitiebron["EA-documentatie"] += 1
+            else:
+                definitie = clean_definitie(tv.get("gemma definitie"))
+                definitiebron["GEMMA definitie (terugval)" if definitie else "geen"] += 1
+
+            synoniemen = splits_synoniemen(tv.get("synoniemen"))
+            for s_ in splits_synoniemen(tv.get("gemma synoniemen")):
+                if s_ not in synoniemen:
+                    synoniemen.append(s_)
+
+            obj = {
+                "ea_id": cls_id,
                 "naam": cleaned,
-                "definitie": clean_definitie(class_def.get(cls_id)),
+                "stereotype": info.get("stereotype"),
+                "definitie": definitie,
+                "toelichting": clean_definitie(tv.get("toelichting")),
+                "synoniemen": synoniemen,
+                "gemma": gemma_info(tv),
+                "ea": {k: info.get(k) for k in ("auteur", "ea_versie", "aangemaakt", "gewijzigd")},
                 "pad": norm_pad,
                 "attributen": attrs,
                 "domein": domein_display,
-            })
+            }
+            objecttypen.append(obj)
 
     walk(root, [])
+    rapport["definitiebron_objecttypen"] = dict(definitiebron)
     return objecttypen
 
 
-def deduplicate_objecttypen(objecttypen):
+def deduplicate_objecttypen(objecttypen, rapport=None):
     """
     Verwijder echte duplicaten (zelfde naam+pad) en geef een waarschuwing
     bij naamcollisies (zelfde naam, ander pad).
@@ -356,8 +402,13 @@ def deduplicate_objecttypen(objecttypen):
     for o in objecttypen:
         key = (o["naam"], tuple(o["pad"]))
         if key in seen:
+            if rapport is not None:
+                rapport.setdefault("duplicaten_naam_pad", []).append({
+                    "naam": o["naam"], "pad": o["pad"],
+                    "behouden_ea_id": seen[key], "vervallen_ea_id": o.get("ea_id"),
+                })
             continue
-        seen[key] = True
+        seen[key] = o.get("ea_id") or True
         result.append(o)
 
     naam_cnt = Counter(o["naam"].lower() for o in result)
@@ -379,7 +430,7 @@ def deduplicate_objecttypen(objecttypen):
 # Stap 2: Attributen extraheren (met definitie, waardelijst, objecttype-referentie)
 # ==============================================================================
 
-def extraheer_attributen(root, objecttypen):
+def extraheer_attributen(root, objecttypen, meta=None):
     """
     Extraheer per objecttype de attributen met definitie (uit <documentation value=...>),
     type (uit <properties type=...>), waardelijst (als type een Enumeration is)
@@ -483,13 +534,21 @@ def extraheer_attributen(root, objecttypen):
                 candidates = obj_by_lower.get(type_val.lower(), [])
                 if len(candidates) == 1:
                     verwijst_naar = {"naam": candidates[0]["naam"], "pad": candidates[0]["pad"]}
-            attr = {"naam": cleaned_naam, "type": type_val, "definitie": definitie}
+            attr = {"ea_id": oa_id or None, "naam": cleaned_naam, "type": type_val, "definitie": definitie}
+            atv = ((meta or {}).get("attributen", {}).get(oa_id) or {}).get("tags", {})
+            toelichting = clean_definitie(atv.get("toelichting"))
+            if toelichting:
+                attr["toelichting"] = toelichting
+            synoniemen = splits_synoniemen(atv.get("synoniemen"))
+            if synoniemen:
+                attr["synoniemen"] = synoniemen
             if waardelijst:
                 attr["waardelijst"] = waardelijst
             if verwijst_naar:
                 attr["verwijst_naar_objecttype"] = verwijst_naar
+            attr["inhoud_hash"] = attribuut_hash(attr)
             attrs.append(attr)
-        result.append({"naam": o["naam"], "pad": o["pad"], "attributen": attrs})
+        result.append({"ea_id": o.get("ea_id"), "naam": o["naam"], "pad": o["pad"], "attributen": attrs})
 
     total = sum(len(r["attributen"]) for r in result)
     with_def = sum(1 for r in result for a in r["attributen"] if a.get("definitie"))
@@ -603,6 +662,42 @@ def extraheer_relaties(root, objecttypen):
 
 
 # ==============================================================================
+# Stap 4: Modellen (EA-packages) met documentatie
+# ==============================================================================
+
+def extraheer_modellen(root, meta):
+    """Lijst van alle EA-packages met pad en documentatie. De documentatie van
+    'Model ...'-packages is de korte domeindefinitie die gemeentelijkgegevensmodel.nl
+    onder 'Definitie Domeinen' toont; bruikbaar als bron voor Domain-beschrijvingen."""
+    modellen = []
+
+    def walk(elem, pad):
+        if elem.tag.split("}")[-1] != "packagedElement":
+            for child in elem:
+                walk(child, pad)
+            return
+        if get_type(elem) != "uml:Package":
+            return
+        naam = elem.get("name")
+        pid = get_id(elem)
+        new_pad = pad + [naam] if naam else pad
+        if naam and naam != "Delfts Gemeentelijk Gegevensmodel" and not DIAGRAM_PREFIX_PATTERN.match(naam):
+            # EA gebruikt EAPK_... in het model en EAID_... (zelfde GUID) in de extensie
+            info = meta["elementen"].get(pid) or meta["elementen"].get(pid.replace("EAPK_", "EAID_", 1)) or {}
+            modellen.append({
+                "ea_id": pid,
+                "naam": naam,
+                "pad": [p for p in new_pad if p != "Delfts Gemeentelijk Gegevensmodel"],
+                "documentatie": clean_definitie(info.get("documentatie")),
+            })
+        for child in elem:
+            walk(child, new_pad)
+
+    walk(root, [])
+    return modellen
+
+
+# ==============================================================================
 # Hoofdprogramma
 # ==============================================================================
 
@@ -661,20 +756,34 @@ def main():
     # --- Parsen ---
     root = parse_xmi(xmi_pad)
 
+    print("  EA-metadata en tagged values ...")
+    meta = verzamel_ea_metadata(root)
+    print(f"    {len(meta['elementen'])} elementen, {len(meta['attributen'])} attributen, "
+          f"{len(meta['conflicten'])} tagged-value-conflicten")
+    rapport = {"versie": ref}
+
     # --- Objecttypen ---
     print("  Objecttypen ...")
-    objecttypen_raw = extraheer_objecttypen(root)
-    objecttypen = deduplicate_objecttypen(objecttypen_raw)
-    pad = uitvoer / "ggm_objecttypen.json"
-    pad.write_text(json.dumps(objecttypen, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"  → {pad} ({len(objecttypen)} objecttypen)")
+    objecttypen_raw = extraheer_objecttypen(root, meta, rapport)
+    objecttypen = deduplicate_objecttypen(objecttypen_raw, rapport)
+    zonder_def = sum(1 for o in objecttypen if not o["definitie"])
+    print(f"    {len(objecttypen)} objecttypen ({zonder_def} zonder definitie), "
+          f"definitiebron: {rapport['definitiebron_objecttypen']}")
 
     # --- Attributen ---
     print("  Attributen ...")
-    attributen = extraheer_attributen(root, objecttypen)
+    attributen = extraheer_attributen(root, objecttypen, meta)
     pad = uitvoer / "ggm_attributen.json"
     pad.write_text(json.dumps(attributen, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"  → {pad}")
+
+    # Inhoud-hash per objecttype (vereist de volledige attributenlijst)
+    attrs_per_key = {(r["naam"], tuple(r["pad"])): r["attributen"] for r in attributen}
+    for o in objecttypen:
+        o["inhoud_hash"] = objecttype_hash(o, attrs_per_key.get((o["naam"], tuple(o["pad"])), []))
+    pad = uitvoer / "ggm_objecttypen.json"
+    pad.write_text(json.dumps(objecttypen, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"  → {pad} ({len(objecttypen)} objecttypen)")
 
     # --- Relaties ---
     print("  Relaties ...")
@@ -682,6 +791,37 @@ def main():
     pad = uitvoer / "ggm_relaties_per_object.json"
     pad.write_text(json.dumps(relaties, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"  → {pad}")
+
+    # --- Modellen (EA-packages) met documentatie ---
+    modellen = extraheer_modellen(root, meta)
+    pad = uitvoer / "ggm_modellen.json"
+    pad.write_text(json.dumps(modellen, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"  → {pad} ({len(modellen)} packages, "
+          f"{sum(1 for m in modellen if m['documentatie'])} met documentatie)")
+
+    # --- Extractierapport ---
+    stereotypes = Counter(o.get("stereotype") or "(geen)" for o in objecttypen)
+    naam_per_id = {eid: (e.get("naam") or "") for eid, e in meta["elementen"].items()}
+    for c in meta["conflicten"]:
+        c["element_naam"] = naam_per_id.get(c["element_id"])
+    rapport.update({
+        "aantal_objecttypen": len(objecttypen),
+        "aantal_attributen": sum(len(r["attributen"]) for r in attributen),
+        "stereotypes_objecttypen": dict(stereotypes),
+        "objecttypen_zonder_definitie": [
+            {"ea_id": o["ea_id"], "naam": o["naam"]} for o in objecttypen if not o["definitie"]
+        ],
+        "attributen_zonder_ea_id": [
+            {"objecttype": r["naam"], "objecttype_ea_id": r.get("ea_id"), "attribuut": a["naam"]}
+            for r in attributen for a in r["attributen"] if not a.get("ea_id")
+        ],
+        "tagged_value_conflicten": meta["conflicten"],
+    })
+    pad = uitvoer / "ggm_extractie_rapport.json"
+    pad.write_text(json.dumps(rapport, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"  → {pad} ({len(rapport.get('uitgesloten_classes', []))} classes uitgesloten, "
+          f"{len(rapport.get('duplicaten_naam_pad', []))} duplicaten, "
+          f"{len(meta['conflicten'])} tag-conflicten)")
 
     print("\nKlaar.")
     print("\nVolgende stap: controleer naamcollisies en update ggm_naam_disambiguatie.json")

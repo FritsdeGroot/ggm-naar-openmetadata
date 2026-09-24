@@ -3,8 +3,8 @@
 Scripts om het **Gemeentelijk Gegevensmodel (GGM)** van [Gemeente Delft](https://github.com/Gemeente-Delft/Gemeentelijk-Gegevensmodel) te laden in een **self-hosted OpenMetadata Community Edition**-omgeving via de REST API.
 
 Het resultaat is een doorzoekbare, domeingestructureerde **data-glossary** met:
-- **959 objecttypen** als Glossary Terms, elk gekoppeld aan hun (sub)domein en hoofddomein-tag
-- **4534 attributen** als child Glossary Terms (met type, definitie en eventuele waardelijst)
+- **~947 objecttypen** als Glossary Terms, elk gekoppeld aan hun (sub)domein en hoofddomein-tag (exact aantal afhankelijk van de GGM-versie en extractie)
+- **~4500 attributen** als child Glossary Terms (met type, definitie en eventuele waardelijst)
 - **425 relaties** tussen objecttypen (uit `uml:Association`) in de beschrijving en als klikbare `relatedTerms`
 - **49 domeinen** als OpenMetadata Domains (hiërarchisch, conform de GGM-packagestructuur)
 
@@ -24,6 +24,10 @@ Het resultaat is een doorzoekbare, domeingestructureerde **data-glossary** met:
 ## Snel aan de slag
 
 ```bash
+# 0. Repository ophalen
+git clone https://github.com/FritsdeGroot/ggm-naar-openmetadata-.git
+cd ggm-naar-openmetadata-
+
 # 1. Bronbestanden genereren uit de GGM-repo → opgeslagen in data/v2.5.1/
 python3 extract_ggm.py --versie v2.5.1
 
@@ -51,6 +55,9 @@ ggm-naar-openmetadata/
 ├── ggm_naar_openmetadata_domains.py      # Laadt domeinstructuur als OpenMetadata Domains
 ├── ggm_objecttypen_naar_openmetadata.py  # Hoofdscript: objecttypen + attributen + relaties
 ├── ggm_domeinen_naar_skos.py             # Genereert SKOS-domeinschema uit mkdocs.yml
+├── ggm_eaid_migratie.py                  # Eenmalige migratie naar EAID-matching (v1.1.0)
+├── ggm_xmi_metadata.py                   # Module: EA-metadata en tagged values uit de XMI
+├── om_ggm_metadata.py                    # Module: custom properties en herkomst in OpenMetadata
 │
 └── data/
     └── v2.5.1/                           # Handmatig bijgehouden bestanden per GGM-versie
@@ -76,6 +83,9 @@ ggm-naar-openmetadata/
 | `ggm_naar_openmetadata_domains.py` | Laadt de domeinstructuur als OpenMetadata Domains |
 | `ggm_objecttypen_naar_openmetadata.py` | Hoofdscript: objecttypen, attributen en relaties laden |
 | `ggm_domeinen_naar_skos.py` | Genereert `ggm_domeinen_skos.jsonld` uit de GGM mkdocs.yml |
+| `ggm_eaid_migratie.py` | Eenmalige migratie v1.0.0 → v1.1.0: koppelt EAID en herkomstmetadata aan bestaande termen (standaard droogloop) |
+| `ggm_xmi_metadata.py` | Module: leest EA-metadata en tagged values uit de XMI (gebruikt door `extract_ggm.py`) |
+| `om_ggm_metadata.py` | Module: custom properties, EAID-index en herkomstmetadata in OpenMetadata |
 
 ### Bronbestanden in `data/<versie>/`
 
@@ -84,8 +94,8 @@ ggm-naar-openmetadata/
 | `ggm_definities.json` | ✅ ja | Domeindefinities (handmatig bijgehouden) |
 | `ggm_pad_naar_domain.json` | ✅ ja | XMI-packagepad → OpenMetadata Domain FQN (handmatig bijgehouden) |
 | `ggm_naam_disambiguatie.json` | ✅ ja | 136 disambiguaties voor niet-unieke objecttypenamen (handmatig bijgehouden) |
-| `ggm_objecttypen.json` | ❌ gegenereerd | 959 objecttypen met naam, definitie, pad, attributen en domein |
-| `ggm_attributen.json` | ❌ gegenereerd | 4534 attributen met type, definitie, waardelijst en objecttype-referenties |
+| `ggm_objecttypen.json` | ❌ gegenereerd | ~947 objecttypen met naam, definitie, pad, attributen en domein (exact aantal afhankelijk van GGM-versie) |
+| `ggm_attributen.json` | ❌ gegenereerd | ~4500 attributen met type, definitie, waardelijst en objecttype-referenties |
 | `ggm_relaties_per_object.json` | ❌ gegenereerd | 425 relaties (uit `uml:Association`), per objecttype gegroepeerd |
 | `ggm_domeinen_skos.jsonld` | ❌ gegenereerd | SKOS-conceptenschema van de volledige domeinstructuur |
 
@@ -128,6 +138,8 @@ python3 extract_ggm.py --versie v2.5.1 --alleen-downloaden
 | `--namen` | Pad naar `ggm_naam_disambiguatie.json` (overschrijft `--versie`) |
 | `--attributen` | Pad naar `ggm_attributen.json` (overschrijft `--versie`) |
 | `--relaties` | Pad naar `ggm_relaties_per_object.json` (overschrijft `--versie`) |
+| `--release <tag>` | Waarde voor `ggmRelease` (default: de waarde van `--versie`) |
+| `--zonder-ggm-metadata` | Sla EAID-matching en herkomstmetadata over (gedrag van v1.0.0) |
 
 > **Tip**: schrijf de output weg voor controle achteraf:
 > ```bash
@@ -162,6 +174,72 @@ python3 ggm_objecttypen_naar_openmetadata.py --versie v2.6.0 \
 
 ---
 
+## Herkomstmetadata en EAID-matching (sinds v1.1.0)
+
+Elk objecttype en attribuut krijgt in OpenMetadata een set custom properties op
+het entiteittype `glossaryTerm`:
+
+| Custom property | Inhoud |
+|---|---|
+| `ggmEaId` | Enterprise Architect-GUID uit de GGM-XMI; **matchsleutel bij herladen** |
+| `ggmRelease` | GGM-release waaruit de term het laatst is geladen |
+| `ggmEersteRelease` | Eerste release waarin de pipeline het element zag (wordt nooit overschreven) |
+| `ggmInhoudHash` | Hash over definitie, toelichting en attributen; wijzigt alleen bij inhoudelijke wijziging |
+| `ggmToelichting` | Toelichting uit het GGM (markdown) |
+| `ggmAuteur` | Auteur volgens EA (informatief) |
+| `gemmaType` | Type van het gekoppelde GEMMA-object |
+
+De link naar het GEMMA-bedrijfsobject staat in het standaardveld **References**
+(naam begint met `GEMMA: `); GGM-synoniemen worden toegevoegd aan **Synonyms**.
+
+**Waarom de EAID?** Objecttypen en attributen worden in vrijwel elke GGM-release
+hernoemd (bijv. `LegesGrondslag` ↔ `Leges_Grondslag`), terwijl de EAID gelijk
+blijft. Het laadscript zoekt daarom eerst op `ggmEaId` en hernoemt de term als de
+naam in het GGM is gewijzigd. Tags, classificaties en eigen aanpassingen blijven
+zo behouden.
+
+**Waarom niet EA's `version`/`modified`?** In GGM 2.5.0 zijn die voor 951 van de
+953 objecttypen tegelijk gewijzigd door een bulkbewerking; ze zeggen niets over
+inhoudelijke wijzigingen. `ggmInhoudHash` doet dat wel.
+
+**Runrapport.** Elke laadrun schrijft `data/<versie>/run_ggm_metadata_<tijd>.json`
+met hernoemingen via EAID, inhoudelijk gewijzigde elementen (het signaal om
+classificaties opnieuw te beoordelen), naamconflicten, verplaatste attributen en
+(bij `--alle`) *verweesde* termen: termen met een `ggmEaId` die in de nieuwe
+release niet meer voorkomen. Die worden nooit automatisch verwijderd.
+
+**Rechten.** Het aanmaken van custom properties vereist Create/EditAll op het
+resource `type` voor het bot-account (of een admin-token bij de eerste run).
+
+### Migratie van v1.0.0
+
+```bash
+# 1. Bronbestanden opnieuw genereren (nu met ea_id, toelichting, GEMMA, hashes)
+python3 extract_ggm.py --versie v2.5.1
+
+# 2. Droogloop: hoe koppelen de GGM-elementen aan de bestaande termen?
+python3 ggm_eaid_migratie.py --versie v2.5.1
+
+# 3. Custom properties aanmaken en EAID + herkomst op bestaande termen zetten
+python3 ggm_eaid_migratie.py --versie v2.5.1 --uitvoeren
+
+# 4. Gewone laadrun: verwijdert de 12 diagram-artefacten uit v1.0.0 en maakt
+#    termen aan voor elementen die nog ontbraken
+python3 ggm_objecttypen_naar_openmetadata.py --versie v2.5.1 \
+  --alle --met-attributen --met-relaties
+
+# 5. Optioneel: omschrijvingen gelijktrekken met de v1.1.0-extractie
+python3 ggm_objecttypen_naar_openmetadata.py --versie v2.5.1 \
+  --alle --met-attributen --met-relaties --forceer-omschrijving
+```
+
+Stap 3 raakt alleen custom properties, references en synoniemen; omschrijvingen,
+domains, tags en relaties blijven ongemoeid. Controleer bij stap 5 eerst een
+enkel domein (`--domein`), omdat de definitie voortaan uit de EA-documentatie
+komt (zie CHANGELOG).
+
+---
+
 ## Naamconventies
 
 **Objecttypen** met een niet-unieke naam krijgen een subdomein-suffix:
@@ -182,6 +260,14 @@ of `status` na het eerste objecttype globaal conflicteren.
 - [OpenMetadata documentatie](https://docs.open-metadata.org)
 - [OpenMetadata Glossary best practices](https://docs.open-metadata.org/latest/how-to-guides/data-governance/glossary/best-practices)
 - [GEMMA — VNG Realisatie](https://www.gemmaonline.nl)
+
+---
+
+## Citatie
+
+Dit project is gebouwd op het Gemeentelijk Gegevensmodel (GGM). Bij verwijzing naar het GGM zelf, gebruik de bronvermelding van de oorspronkelijke makers:
+
+> Brienen, A., & Ashkpour, A. (2019). *Gemeentelijk Gegevensmodel (GGM)*. Gemeente Delft. https://github.com/Gemeente-Delft/Gemeentelijk-Gegevensmodel
 
 ---
 

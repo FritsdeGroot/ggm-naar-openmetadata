@@ -30,7 +30,13 @@ import sys
 import os
 import json
 import argparse
+from datetime import datetime
 import requests
+
+from om_ggm_metadata import (
+    ensure_custom_properties, haal_alle_termen, TermIndex,
+    hernoem_term, werk_ggm_metadata_bij, TERM_FIELDS,
+)
 
 
 GLOSSARY_NAME = "GGM_Objecttypen"
@@ -80,10 +86,17 @@ OBSOLETE_TERMS = [
     "Ontwikkelwens ",
     "Reiskosten naar het werk ",
     "VoorlopigeVoorziening ",
-    # Losse top-level termen (zonder parent) uit een eerdere testrun, niet door
-    # dit script aangemaakt en zonder verdere waarde.
-    "Fractie",
-    "Rol",
+    # Diagram-artefacten uit een oudere extractie (v1.0.0-bronbestand met 959
+    # objecttypen): legenda-placeholders uit 'Diagram RSGB > Tekenwijze' en
+    # hulpvlakken uit 'Diagrammen intern gebruik'. Geen echte objecttypen,
+    # geen attributen; extract_ggm.py filtert ze al uit (Diagram-packages).
+    "ObjecttypeA", "ObjecttypeB", "ObjecttypeC", "ObjecttypeD",
+    "ObjecttypeE", "ObjecttypeF", "ObjecttypeG",
+    "DetailleringAdressenGebouwenEnTerreinen", "DetailleringKadastraleOnroerendZaken",
+    "DetailleringSubjecten", "DetailleringWOZObjecttypen", "OverigImgeo",
+    # NB: "Fractie" en "Rol" stonden hier tot en met v1.0.0 als "losse termen uit
+    # een testrun", maar het zijn bestaande GGM-objecttypen (Afval resp. HR).
+    # Ze zijn verwijderd uit deze lijst; zie ook de beveiliging in main().
 ]
 
 # Als de domeinnaam in ggm_objecttypen.json niet exact overeenkomt met de
@@ -326,7 +339,81 @@ def update_description_if_changed(session, term, new_description):
     return f" + FOUT bij omschrijving-update {patch_resp.status_code}: {patch_resp.text}"
 
 
-def get_or_create_attribute_term(session, glossary_fqn, parent_fqn, parent_display_name, attr_name, description, related_term_fqn=None, forceer_omschrijving=False):
+def zoek_bestaande_term(session, index, ggm_item, parent_naam, gewenste_naam, own_fqn, rapport,
+                        verwachte_parent_id=None):
+    """Zoek een bestaande term: eerst op EAID (ggmEaId), dan op naam.
+
+    Wordt de term op EAID gevonden onder een andere naam, dan is het element in
+    het GGM hernoemd en wordt de term hernoemd (met behoud van tags, eigen
+    aanpassingen en classificaties). Retourneert (term | None, statussuffix).
+    Zonder index (bijv. oude bronbestanden zonder ea_id) valt de functie terug
+    op het v1.0.0-gedrag: een GET op FQN."""
+    if index is None:
+        resp = session.get(f"{session.base_url}/api/v1/glossaryTerms/name/{own_fqn}",
+                           params={"fields": TERM_FIELDS})
+        return (resp.json(), "") if resp.status_code == 200 else (None, "")
+
+    ea_id = (ggm_item or {}).get("ea_id")
+    term, hoe = index.zoek(ea_id, parent_naam, gewenste_naam)
+
+    if hoe == "conflict":
+        bestaand = index.op_naam.get((parent_naam, gewenste_naam))
+        melding = {
+            "fqn": own_fqn, "ea_id_ggm": ea_id,
+            "ea_id_in_openmetadata": (bestaand.get("extension") or {}).get("ggmEaId"),
+        }
+        if rapport is not None:
+            rapport["eaid_conflicten"].append(melding)
+        return None, (f"FOUT: naam al in gebruik door ander GGM-element "
+                      f"({melding['ea_id_in_openmetadata']}); handmatig beoordelen")
+
+    if term is None:
+        return None, ""
+
+    if hoe == "eaid" and verwachte_parent_id:
+        huidige_parent = (term.get("parent") or {}).get("id")
+        if huidige_parent and huidige_parent != verwachte_parent_id:
+            if rapport is not None:
+                rapport["verplaatst"].append({"ea_id": ea_id, "fqn_openmetadata": term.get("fullyQualifiedName"),
+                                              "verwacht_fqn": own_fqn})
+            return None, ("FOUT: attribuut is in het GGM naar een ander objecttype verplaatst; "
+                          "handmatig beoordelen (zie runrapport)")
+
+    suffix = ""
+    if hoe == "eaid" and term["name"] != gewenste_naam:
+        oude_naam = term["name"]
+        index.verwijder(term)
+        try:
+            term = hernoem_term(session, term, gewenste_naam)
+        except RuntimeError as e:
+            index.voeg_toe(term)
+            return None, f"FOUT bij hernoemen (EAID) '{oude_naam}' -> '{gewenste_naam}': {e}"
+        index.voeg_toe(term)
+        if rapport is not None:
+            rapport["hernoemd_via_eaid"].append({"ea_id": ea_id, "van": oude_naam, "naar": gewenste_naam})
+        suffix = f" + hernoemd via EAID (was '{oude_naam}')"
+    elif hoe == "naam" and ea_id and not (term.get("extension") or {}).get("ggmEaId"):
+        suffix = " + EAID gekoppeld"
+    return term, suffix
+
+
+def pas_ggm_metadata_toe(session, term, ggm_item, index, release, rapport, own_fqn, status):
+    """Zet ggmEaId/ggmRelease/ggmInhoudHash/... , GEMMA-link en synoniemen."""
+    if not ggm_item or (not ggm_item.get("ea_id") and not ggm_item.get("inhoud_hash")):
+        return status, term
+    suffix, term, gewijzigd = werk_ggm_metadata_bij(session, term, ggm_item, release)
+    if index is not None:
+        index.voeg_toe(term)
+    if rapport is not None:
+        if ggm_item.get("ea_id"):
+            rapport["_geziene_eaids"].add(ggm_item["ea_id"])
+        if gewijzigd:
+            rapport["inhoud_gewijzigd"].append({"ea_id": ggm_item.get("ea_id"), "fqn": own_fqn})
+    return status + suffix, term
+
+
+def get_or_create_attribute_term(session, glossary_fqn, parent_fqn, parent_display_name, attr_name, description, related_term_fqn=None, forceer_omschrijving=False,
+                                 ggm_item=None, index=None, release=None, rapport=None, parent_id=None):
     """Maak (of vind) een attribuut als child glossary term onder een objecttype-term.
 
     De OpenMetadata-naam-validatie voor GlossaryTerm.name is glossary-breed (niet per FQN),
@@ -339,11 +426,14 @@ def get_or_create_attribute_term(session, glossary_fqn, parent_fqn, parent_displ
     combined_name = f"{parent_display_name} {attr_name}"
     own_fqn = f"{parent_fqn}.{combined_name}"
 
-    url = f"{session.base_url}/api/v1/glossaryTerms/name/{own_fqn}"
-    resp = session.get(url)
-    if resp.status_code == 200:
-        term = resp.json()
-        status = "bestaat al"
+    term, status = zoek_bestaande_term(
+        session, index, ggm_item, parent_display_name, combined_name, own_fqn, rapport,
+        verwachte_parent_id=parent_id,
+    )
+    if status and status.startswith("FOUT"):
+        return own_fqn, status
+    if term is not None:
+        status = "bestaat al" + (status or "")
         if forceer_omschrijving:
             status += update_description_if_changed(session, term, description)
     else:
@@ -360,6 +450,8 @@ def get_or_create_attribute_term(session, glossary_fqn, parent_fqn, parent_displ
             return own_fqn, f"FOUT bij aanmaken {resp.status_code}: {resp.text}"
         term = resp.json()
         status = "aangemaakt"
+
+    status, term = pas_ggm_metadata_toe(session, term, ggm_item, index, release, rapport, own_fqn, status)
 
     if related_term_fqn:
         related = term.get("relatedTerms") or []
@@ -408,13 +500,14 @@ def domain_exists(session, domain_fqn):
     return None
 
 
-def get_or_create_term(session, glossary_fqn, name, description, domain=None, tag_fqn=None, forceer_omschrijving=False, related_term_fqns=None):
+def get_or_create_term(session, glossary_fqn, name, description, domain=None, tag_fqn=None, forceer_omschrijving=False, related_term_fqns=None,
+                       ggm_item=None, index=None, release=None, rapport=None):
     own_fqn = f"{glossary_fqn}.{name}"
 
-    url = f"{session.base_url}/api/v1/glossaryTerms/name/{own_fqn}"
-    resp = session.get(url)
-    if resp.status_code == 200:
-        term = resp.json()
+    term, zoekstatus = zoek_bestaande_term(session, index, ggm_item, None, name, own_fqn, rapport)
+    if zoekstatus and zoekstatus.startswith("FOUT"):
+        return own_fqn, zoekstatus, None
+    if term is not None:
         already_existed = True
     else:
         payload = {
@@ -426,14 +519,17 @@ def get_or_create_term(session, glossary_fqn, name, description, domain=None, ta
         url = f"{session.base_url}/api/v1/glossaryTerms"
         resp = session.post(url, json=payload)
         if not resp.ok:
-            return own_fqn, f"FOUT bij aanmaken {resp.status_code}: {resp.text}"
+            return own_fqn, f"FOUT bij aanmaken {resp.status_code}: {resp.text}", None
         term = resp.json()
         already_existed = False
 
     status = "bestaat al" if already_existed else "aangemaakt"
+    status += zoekstatus or ""
 
     if already_existed and forceer_omschrijving:
         status += update_description_if_changed(session, term, description)
+
+    status, term = pas_ggm_metadata_toe(session, term, ggm_item, index, release, rapport, own_fqn, status)
 
     if domain:
         current_domains = term.get("domains") or []
@@ -515,18 +611,15 @@ def get_or_create_term(session, glossary_fqn, name, description, domain=None, ta
             else:
                 status += f" + FOUT bij relatedTerms {patch_resp.status_code}: {patch_resp.text}"
 
-    return own_fqn, status
+    return own_fqn, status, term.get("id")
 
 
 def list_all_glossary_terms(session, glossary_id):
-    """Haal alle terms van een glossary op (max 1000), als naam->term dict."""
-    url = f"{session.base_url}/api/v1/glossaryTerms"
-    params = {"glossary": glossary_id, "limit": 1000, "fields": "domains,tags,parent"}
-    resp = session.get(url, params=params)
-    resp.raise_for_status()
-    data = resp.json()
+    """Haal alle terms van een glossary op als naam->term dict.
+    Sinds v1.1.0 gepagineerd: v1.0.0 haalde maximaal 1000 termen op, waardoor
+    de correctie-pass bij >5.000 termen een deel van de glossary miste."""
     by_name = {}
-    for term in data.get("data", []):
+    for term in haal_alle_termen(session, glossary_id, fields="domains,tags,parent,extension"):
         by_name[term["name"]] = term
     return by_name
 
@@ -619,6 +712,34 @@ def delete_term(session, terms_by_name, name):
     return f"FOUT {resp.status_code}: {resp.text}"
 
 
+def schrijf_runrapport(rapport, index, versie, alle_domeinen):
+    """Schrijf een runrapport met hernoemingen, inhoudelijke wijzigingen,
+    conflicten en (bij --alle) verweesde termen: termen met een ggmEaId die in
+    deze GGM-release niet meer voorkomen. Die worden NIET automatisch
+    verwijderd; er kunnen classificaties en eigen aanpassingen aan hangen."""
+    gezien = rapport.pop("_geziene_eaids")
+    if alle_domeinen:
+        rapport["verweesd"] = sorted(
+            [{"ea_id": eaid, "fqn": t.get("fullyQualifiedName")}
+             for eaid, t in index.op_eaid.items() if eaid not in gezien],
+            key=lambda x: x["fqn"] or "",
+        )
+    else:
+        rapport["verweesd"] = "alleen bepaald bij --alle"
+    rapport["afgerond"] = datetime.now().isoformat(timespec="seconds")
+    map_ = os.path.join("data", versie) if versie else "."
+    os.makedirs(map_, exist_ok=True)
+    pad = os.path.join(map_, f"run_ggm_metadata_{datetime.now():%Y%m%d_%H%M%S}.json")
+    with open(pad, "w", encoding="utf-8") as f:
+        json.dump(rapport, f, ensure_ascii=False, indent=2)
+    n_verweesd = len(rapport["verweesd"]) if isinstance(rapport["verweesd"], list) else "n.v.t."
+    print(f"Runrapport: {pad}")
+    print(f"  {len(rapport['hernoemd_via_eaid'])} hernoemd via EAID, "
+          f"{len(rapport['inhoud_gewijzigd'])} inhoudelijk gewijzigd, "
+          f"{len(rapport['eaid_conflicten'])} conflicten, "
+          f"{len(rapport['verplaatst'])} verplaatst, {n_verweesd} verweesd")
+
+
 def resolve_data_pad(versie, bestandsnaam, override=None):
     """Bepaal het pad naar een bronbestand.
     - Als 'override' is opgegeven (expliciet --argument), gebruik die.
@@ -629,6 +750,13 @@ def resolve_data_pad(versie, bestandsnaam, override=None):
     if versie:
         return os.path.join("data", versie, bestandsnaam)
     return bestandsnaam
+
+
+def zet_glossary(naam):
+    """Gebruik een andere glossary dan GGM_Objecttypen (bijv. om te testen)."""
+    global GLOSSARY_NAME, GLOSSARY_DISPLAY_NAME
+    GLOSSARY_NAME = naam
+    GLOSSARY_DISPLAY_NAME = naam.replace("_", " ")
 
 
 def main():
@@ -659,9 +787,17 @@ Voorbeelden:
     parser.add_argument("--domein", help="Naam van het te laden hoofddomein (exact zoals in ggm_objecttypen.json)")
     parser.add_argument("--alle", action="store_true", help="Laad alle hoofddomeinen")
     parser.add_argument("--list", action="store_true", help="Toon beschikbare hoofddomeinen en stop")
+    parser.add_argument("--glossary", default=None,
+                        help=f"Naam van de glossary (default: {GLOSSARY_NAME}). Handig om naast een "
+                             "bestaande glossary te testen, bijv. --glossary GGM_Objecttypen_test")
+    parser.add_argument("--release", default=None, help="Waarde voor ggmRelease (default: de waarde van --versie)")
+    parser.add_argument("--zonder-ggm-metadata", action="store_true",
+                        help="Sla EAID-matching en GGM-herkomstmetadata over (gedrag van v1.0.0)")
     args = parser.parse_args()
 
     v = args.versie
+    if args.glossary:
+        zet_glossary(args.glossary)
 
     pad_objecttypen  = resolve_data_pad(v, "ggm_objecttypen.json",          args.data)
     pad_mapping      = resolve_data_pad(v, "ggm_pad_naar_domain.json",       args.mapping)
@@ -740,7 +876,16 @@ Voorbeelden:
         elif result and result.startswith("FOUT"):
             print(f"  FOUT bij hernoemen '{orig_name}' -> '{new_name}': {result}")
 
+    huidige_namen = {resolve_term_name(o, disambiguation_map) for o in objecttypen}
     for obsolete_name in OBSOLETE_TERMS:
+        # Beveiliging: verwijder nooit een term die (nog) een GGM-objecttype is
+        # of een GGM-EAID draagt; daar kunnen classificaties aan hangen.
+        term = terms_by_name.get(obsolete_name)
+        if obsolete_name in huidige_namen or (term and (term.get("extension") or {}).get("ggmEaId")):
+            if term:
+                print(f"  OVERGESLAGEN: '{obsolete_name}' staat in OBSOLETE_TERMS maar is een "
+                      f"bestaand GGM-objecttype; niet verwijderd.")
+            continue
         result = delete_term(session, terms_by_name, obsolete_name)
         if result == "verwijderd":
             print(f"  Verwijderd (overtollig): '{obsolete_name}'")
@@ -752,6 +897,35 @@ Voorbeelden:
         n_renamed += rename_old_style_attribute_terms(session, glossary_id, terms_by_name)
 
     print(f"{n_renamed} term(en) hernoemd, {n_deleted} term(en) verwijderd.\n")
+
+    # GGM-herkomstmetadata (v1.1.0): custom properties + EAID-index
+    index = None
+    release = args.release or v
+    rapport = None
+    heeft_eaid = any(o.get("ea_id") for o in objecttypen)
+    if args.zonder_ggm_metadata:
+        print("GGM-metadata overgeslagen (--zonder-ggm-metadata).\n")
+    elif not heeft_eaid:
+        print("WAARSCHUWING: ggm_objecttypen.json bevat geen ea_id (gegenereerd met extract_ggm.py < v1.1.0).")
+        print("             Draai extract_ggm.py opnieuw; nu wordt op naam gematcht zoals in v1.0.0.\n")
+    else:
+        if not release:
+            sys.exit("Geef --versie of --release op; die waarde wordt vastgelegd in ggmRelease.")
+        nieuw = ensure_custom_properties(session)
+        print(f"Custom properties op glossaryTerm: {', '.join(nieuw) + ' aangemaakt' if nieuw else 'aanwezig'}.")
+        alle_termen = haal_alle_termen(session, glossary_id)
+        index = TermIndex(alle_termen)
+        print(f"Index: {len(alle_termen)} bestaande termen, {len(index.op_eaid)} met ggmEaId.")
+        if index.dubbele_eaid:
+            print(f"  WAARSCHUWING: {len(index.dubbele_eaid)} EAID's komen op meer dan één term voor (zie runrapport).")
+        print()
+        rapport = {
+            "release": release,
+            "gestart": datetime.now().isoformat(timespec="seconds"),
+            "hernoemd_via_eaid": [], "inhoud_gewijzigd": [], "eaid_conflicten": [],
+            "verplaatst": [], "_geziene_eaids": set(),
+            "dubbele_eaid_in_openmetadata": [list(x) for x in index.dubbele_eaid],
+        }
 
     # Cache van opgehaalde Domain-objecten per FQN (voorkomt herhaalde lookups)
     domain_cache = {}
@@ -785,8 +959,14 @@ Voorbeelden:
                     target_name = resolve_term_name(r["object"], disambiguation_map)
                     related_term_fqns.append(f"{glossary_fqn}.{target_name}")
 
-            fqn, status = get_or_create_term(session, glossary_fqn, term_name, description, domain, tag_fqn, args.forceer_omschrijving, related_term_fqns)
+            fqn, status, term_id = get_or_create_term(
+                session, glossary_fqn, term_name, description, domain, tag_fqn,
+                args.forceer_omschrijving, related_term_fqns,
+                ggm_item=obj, index=index, release=release, rapport=rapport,
+            )
             print(f"  [{status}] {fqn}  (domain: {domain_fqn})")
+            if status.startswith("FOUT"):
+                continue
 
             if args.met_attributen:
                 attrs = attributen_map.get((obj["naam"], tuple(obj["pad"])), [])
@@ -796,8 +976,11 @@ Voorbeelden:
                     attr_desc = build_attribute_description(attr)
                     related_fqn = resolve_related_term_fqn(glossary_fqn, attr, disambiguation_map)
                     attr_fqn, attr_status = get_or_create_attribute_term(
-                        session, glossary_fqn, fqn, term_name, attr["naam"], attr_desc, related_fqn, args.forceer_omschrijving
+                        session, glossary_fqn, fqn, term_name, attr["naam"], attr_desc, related_fqn, args.forceer_omschrijving,
+                        ggm_item=attr, index=index, release=release, rapport=rapport, parent_id=term_id,
                     )
+                    if "hernoemd via EAID" in attr_status or "INHOUD GEWIJZIGD" in attr_status:
+                        print(f"    [{attr_status}] {attr_fqn}")
                     if attr_status.startswith("FOUT"):
                         n_err += 1
                         print(f"    [{attr_status}] {attr_fqn}")
@@ -807,6 +990,9 @@ Voorbeelden:
                     print(f"    -> {n_ok} attributen ok" + (f", {n_err} fouten" if n_err else ""))
 
         print()
+
+    if rapport is not None:
+        schrijf_runrapport(rapport, index, v, alle_domeinen=bool(args.alle))
 
     print("Klaar.")
 

@@ -1,98 +1,156 @@
 # Changelog
 
-All notable changes to this project are documented here.
-This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+Alle noemenswaardige wijzigingen aan dit project worden in dit bestand vastgelegd.
 
----
-
-## [1.0.0] — 2026-06-15
-
-Initial public release. Complete pipeline for loading GGM v2.5.1 into
-OpenMetadata Community Edition.
-
-### Added
-
-#### Domain structure
-- `ggm_naar_openmetadata_domains.py`: loads 49 (sub)domains as OpenMetadata
-  Domains with parent hierarchy, sourced from GGM mkdocs.yml navigation
-- `ggm_domeinen_naar_skos.py`: generates `ggm_domeinen_skos.jsonld` (SKOS
-  concept scheme) from GGM mkdocs.yml + domain definitions
-- `ggm_domeinen_skos.jsonld`: SKOS concept scheme for 49 GGM domains
-- `ggm_definities.json`: domain definitions derived from GGM README.md
-
-#### Objecttypes (glossary terms)
-- `ggm_objecttypen_naar_openmetadata.py`: main script for loading 959 objecttypes
-  as GlossaryTerms in glossary `GGM_Objecttypen`, each linked to their lowest
-  (sub)domain and tagged with their main domain
-- `ggm_objecttypen.json`: 959 cleaned objecttypes with name, definition, path,
-  attributes and domain
-- `ggm_pad_naar_domain.json`: mapping from XMI package path to OpenMetadata
-  Domain FQN
-- `ggm_naam_disambiguatie.json`: disambiguation of 136 objecttypes with
-  non-unique names (e.g. `Pand (BAG)` vs `Pand (RSGB)`)
-- Classification `GGM_Hoofddomein` with 12 main domain tags
-- Idempotent correction pass: `rename_old_style_attribute_terms`,
-  `rename_top_level_term`, `delete_term` for OBSOLETE_TERMS and EXTRA_RENAMES
-
-#### Attributes (child glossary terms)
-- `ggm_attributen.json`: 4534 attributes across 824 objecttypes, with name,
-  type, definition, value list (for `uml:Enumeration` types) and objecttype
-  reference (for `uml:Class` types)
-- `--met-attributen` flag: loads attributes as child GlossaryTerms under each
-  objecttype using `"<Objecttype> <Attribute>"` naming convention
-- `--forceer-omschrijving` flag: updates descriptions of existing terms when
-  changed (for GGM version updates)
-- 510 attributes with allowed value lists (from 156 unique Enumerations)
-- 98 attributes with `relatedTerms` links to referenced objecttype terms
-  (e.g. `geboorteland` → `Land`)
-
-#### Relations between objecttypes
-- `ggm_relaties_per_object.json`: 425 relations (from `uml:Association`) across
-  384 objecttypes, with association name and normalized multiplicities
-- `--met-relaties` flag: adds `**Relaties:**` section to objecttype description
-  and `relatedTerms` links between related objecttype terms
-- Multiplicity normalization: EA encoding `0..-1` / `1..-1` → `0..*` / `1..*`
-
-### Architecture decisions
-
-- **`"<Objecttype> <Attribute>"` naming for child terms**: OpenMetadata's
-  `GlossaryTerm.name` validation is glossary-wide (not per FQN), causing generic
-  attribute names like `naam` or `status` to conflict after the first objecttype.
-  Contextual names (`Raadslid naam`, `Pand (BAG) status`) are both unique and
-  aligned with [OpenMetadata best practices](https://docs.open-metadata.org/latest/how-to-guides/data-governance/glossary/best-practices)
-  for PII-sensitive tagging.
-- **Relations as description + relatedTerms**: chosen over child terms (same
-  name-uniqueness issue) and bare relatedTerms (loses association name and
-  multiplicity).
-- **`rename_top_level_term` wrapper**: prevents disambiguation renames from
-  accidentally targeting attribute child terms that share a name with an
-  objecttype (e.g. attribute `Vergadering.locatie` being mistaken for objecttype
-  `locatie`).
-
-### Known limitations
-
-- 135 objecttypes have no attributes in the XMI (abstract/marker classes or
-  specialisations that inherit attributes via association, not `ownedAttribute`)
-- 35 attribute→objecttype references are ambiguous (multiple objecttypes with the
-  same name in different domains, e.g. `Leverancier`) and are intentionally left
-  uncoupled to avoid incorrect `relatedTerms` links
-- 657 of the 1084 `uml:Association` elements do not connect two recognized
-  objecttypes (they reference Enumerations, PrimitiveTypes or EA helper classes
-  such as `ProxyConnector`) and are excluded
-- `uml:AssociationClass` (6 elements, e.g. `Historische Rol`) and `uml:DataType`
-  (11 elements, e.g. `Geldbedrag`) are not yet loaded
-- Requires OpenMetadata 2.x — the relatedTerms API payload changed between 1.x and 2.x (`type`/`fullyQualifiedName` → `relationType`/`term.fullyQualifiedName`)
-- `relatedTerms` links to objecttypes in a domain loaded later in the same run
-  may be missing after the first `--alle` run; a second identical run is
-  self-healing
-
----
+Het formaat is gebaseerd op [Keep a Changelog](https://keepachangelog.com/nl/1.1.0/)
+en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
-Possible future additions:
-- Extraction scripts for generating `ggm_objecttypen.json`, `ggm_attributen.json`
-  and `ggm_relaties_per_object.json` from a new GGM XMI export
-- Support for `uml:AssociationClass` and `uml:DataType` elements
-- Automated PII/AVG classification layer aligned with Woo information categories
-- Support for OpenMetadata's Data Product entity type
+Gepland als v1.1.0. Nog niet getest tegen een live OpenMetadata-instantie.
+
+### Toegevoegd
+
+- **EAID als matchsleutel**: `extract_ggm.py` neemt per objecttype en attribuut
+  de Enterprise Architect-GUID (`ea_id`) op. Het laadscript zoekt bestaande
+  termen eerst op `ggmEaId` en pas daarna op naam; is een element in het GGM
+  hernoemd, dan wordt de term hernoemd met behoud van tags, classificaties en
+  eigen aanpassingen.
+- **Custom properties op glossaryTerm** (`om_ggm_metadata.py`): `ggmEaId`,
+  `ggmRelease`, `ggmEersteRelease`, `ggmInhoudHash`, `ggmToelichting`,
+  `ggmAuteur`, `gemmaType`. Worden idempotent aangemaakt bij de eerste run.
+- **GEMMA-link** in het standaardveld References (naam `GEMMA: <naam>`) voor 502
+  objecttypen; **synoniemen** uit het GGM in Synonyms (alleen toevoegen).
+- **Inhoud-hash** per objecttype en attribuut, als betrouwbaar wijzigingssignaal.
+  EA's eigen `version`/`modified` zijn daarvoor ongeschikt: in GGM 2.5.0 zijn ze
+  voor 951 van de 953 objecttypen tegelijk gewijzigd door een bulkbewerking.
+- **Runrapport** `data/<versie>/run_ggm_metadata_<tijd>.json`: hernoemingen via
+  EAID, inhoudelijk gewijzigde elementen, naamconflicten, verplaatste attributen
+  en (bij `--alle`) verweesde termen. Verweesde termen worden niet verwijderd.
+- **Extractierapport** `ggm_extractie_rapport.json`: uitgesloten classes,
+  duplicaten, definitiebron, attributen zonder EAID (265) en tagged-value-
+  conflicten tussen spellingen (130, bijv. `GEMMA naam` vs `GEMMA-naam`).
+- `ggm_modellen.json`: EA-packages met hun documentatie (korte domeindefinities).
+- `ggm_xmi_metadata.py`: leest EA-extensie en profieltoepassingen uit en voegt
+  tagspellingen samen (`GEMMA url`/`GEMMA-URL`/`GEMMA_url`).
+- `ggm_eaid_migratie.py`: eenmalige migratie van v1.0.0-termen, standaard als
+  droogloop.
+- `--glossary <naam>`: laden in een andere glossary, bijv. om naast een
+  bestaande te testen. `--release`, `--zonder-ggm-metadata`.
+
+### Gewijzigd
+
+- **Definitiebron objecttypen**: de EA-documentatie is leidend (dit toont ook
+  gemeentelijkgegevensmodel.nl), met terugval op `GEMMA definitie`.
+- `list_all_glossary_terms` haalt alle termen gepagineerd op (was maximaal 1000).
+
+### Opgelost
+
+- `extract_ggm.py` las alleen `GEMMA definitie`, waardoor opnieuw gegenereerde
+  bronbestanden 546 van de 947 objecttypen zonder definitie opleverden. Met
+  `--forceer-omschrijving` zou dat bestaande definities overschrijven. Nu nog 9
+  objecttypen zonder definitie (ontbreekt in het GGM zelf).
+- `OBSOLETE_TERMS` bevatte `Fractie` en `Rol`, bestaande GGM-objecttypen (Afval,
+  HR). Verwijderd, en een term met `ggmEaId` of een actuele GGM-naam wordt nooit
+  meer door de correctie-pass verwijderd.
+- `clean_naam` zocht `REVERSE_CLEAN` pas op na het verwijderen van `/` en `.`,
+  waardoor o.a. `Periodiek dienst Bijz. bijstand` niet werd omgezet.
+- Verschil 947 vs 959 objecttypen (bekende beperking v1.0.0) verklaard: de 12
+  extra termen zijn diagram-artefacten uit een oudere extractie
+  (`ObjecttypeA`–`G`, `Detaillering...`, `OverigImgeo`). Toegevoegd aan
+  `OBSOLETE_TERMS`.
+
+## [1.0.0] - 2026-09-24
+
+Eerste openbare release. Volledige pipeline voor het laden van GGM v2.5.1 in
+OpenMetadata Community Edition.
+
+### Toegevoegd
+
+#### Domeinstructuur
+- `ggm_naar_openmetadata_domains.py`: laadt 49 (sub)domeinen als OpenMetadata
+  Domains met parent-hiërarchie, ontleend aan de GGM mkdocs.yml-navigatie
+- `ggm_domeinen_naar_skos.py`: genereert `ggm_domeinen_skos.jsonld` (SKOS
+  concept scheme) uit de GGM mkdocs.yml + domeindefinities
+- `ggm_domeinen_skos.jsonld`: SKOS concept scheme voor 49 GGM-domeinen
+- `ggm_definities.json`: domeindefinities afgeleid uit de GGM README.md
+
+#### Objecttypen (glossary terms)
+- `ggm_objecttypen_naar_openmetadata.py`: hoofdscript voor het laden van 959
+  objecttypen als GlossaryTerms in glossary `GGM_Objecttypen`, elk gekoppeld aan
+  hun laagste (sub)domein en getagd met hun hoofddomein
+- `ggm_objecttypen.json`: 959 opgeschoonde objecttypen met naam, definitie, pad,
+  attributen en domein
+- `ggm_pad_naar_domain.json`: mapping van XMI-packagepad naar OpenMetadata
+  Domain FQN
+- `ggm_naam_disambiguatie.json`: disambiguatie van 136 objecttypen met
+  niet-unieke namen (bijv. `Pand (BAG)` vs `Pand (RSGB)`)
+- Classification `GGM_Hoofddomein` met 12 hoofddomein-tags
+- Idempotente correctieronde: `rename_old_style_attribute_terms`,
+  `rename_top_level_term`, `delete_term` voor OBSOLETE_TERMS en EXTRA_RENAMES
+
+#### Attributen (child glossary terms)
+- `ggm_attributen.json`: 4534 attributen verdeeld over 824 objecttypen, met naam,
+  type, definitie, waardelijst (voor `uml:Enumeration`-types) en
+  objecttype-referentie (voor `uml:Class`-types)
+- `--met-attributen`-vlag: laadt attributen als child GlossaryTerms onder elk
+  objecttype volgens de naamconventie `"<Objecttype> <Attribute>"`
+- `--forceer-omschrijving`-vlag: werkt beschrijvingen van bestaande terms bij
+  wanneer deze zijn gewijzigd (voor GGM-versie-updates)
+- 510 attributen met toegestane waardelijsten (uit 156 unieke Enumerations)
+- 98 attributen met `relatedTerms`-koppelingen naar gerefereerde
+  objecttype-terms (bijv. `geboorteland` → `Land`)
+
+#### Relaties tussen objecttypen
+- `ggm_relaties_per_object.json`: 425 relaties (uit `uml:Association`) over 384
+  objecttypen, met associatienaam en genormaliseerde multipliciteiten
+- `--met-relaties`-vlag: voegt een `**Relaties:**`-sectie toe aan de
+  objecttype-beschrijving en `relatedTerms`-koppelingen tussen gerelateerde
+  objecttype-terms
+- Multipliciteitsnormalisatie: EA-codering `0..-1` / `1..-1` → `0..*` / `1..*`
+
+### Ontwerpkeuzes
+
+- **`"<Objecttype> <Attribute>"`-naamgeving voor child terms**: OpenMetadata's
+  `GlossaryTerm.name`-validatie geldt glossary-breed (niet per FQN), waardoor
+  generieke attribuutnamen als `naam` of `status` na het eerste objecttype
+  botsen. Contextuele namen (`Raadslid naam`, `Pand (BAG) status`) zijn zowel
+  uniek als in lijn met de [OpenMetadata best practices](https://docs.open-metadata.org/latest/how-to-guides/data-governance/glossary/best-practices)
+  voor PII-gevoelige tagging.
+- **Relaties als beschrijving + relatedTerms**: gekozen boven child terms
+  (dezelfde naam-uniciteitskwestie) en kale relatedTerms (verliest associatienaam
+  en multipliciteit).
+- **`rename_top_level_term`-wrapper**: voorkomt dat disambiguatie-hernoemingen
+  per ongeluk attribuut-child-terms raken die een naam delen met een objecttype
+  (bijv. attribuut `Vergadering.locatie` dat wordt aangezien voor objecttype
+  `locatie`).
+
+### Bekende beperkingen
+
+- 135 objecttypen hebben geen attributen in de XMI (abstracte/marker-classes of
+  specialisaties die attributen erven via associatie, niet via `ownedAttribute`)
+- 35 attribuut→objecttype-referenties zijn ambigu (meerdere objecttypen met
+  dezelfde naam in verschillende domeinen, bijv. `Leverancier`) en worden bewust
+  ongekoppeld gelaten om onjuiste `relatedTerms`-koppelingen te voorkomen
+- 657 van de 1084 `uml:Association`-elementen verbinden geen twee herkende
+  objecttypen (ze verwijzen naar Enumerations, PrimitiveTypes of EA-hulpclasses
+  zoals `ProxyConnector`) en worden uitgesloten
+- `uml:AssociationClass` (6 elementen, bijv. `Historische Rol`) en `uml:DataType`
+  (11 elementen, bijv. `Geldbedrag`) worden nog niet geladen
+- Vereist OpenMetadata 2.x — de relatedTerms-API is tussen 1.x en 2.x ingrijpend
+  gewijzigd: het payload-formaat is nu `{"relationType": "relatedTo", "term": {"id": "<uuid>", "type": "glossaryTerm"}}`,
+  de doel-term-UUID moet via een GET worden opgehaald vóór het patchen, en
+  `relationType` moet een van de volgende zijn: relatedTo, synonym, antonym,
+  broader, narrower, partOf, hasPart, calculatedFrom, usedToCalculate, seeAlso
+- `relatedTerms`-koppelingen naar objecttypen in een domein dat later in dezelfde
+  run wordt geladen, kunnen ontbreken na de eerste `--alle`-run; een tweede
+  identieke run is zelfherstellend
+- `extract_ggm.py` regenereert momenteel ~947 objecttypen, terwijl de
+  meegeleverde `ggm_objecttypen.json` (en deze release) er 959 bevat. De 12
+  ontbrekende objecttypen zijn nog niet geïdentificeerd; vergelijking van beide
+  `ggm_objecttypen.json`-outputs is nodig om te bepalen of dit een
+  filteringsverschil is in `extract_ggm.py` (bijv. `DIAGRAM_PREFIX_PATTERN` of
+  `clean_naam`) of een verschil in de gebruikte XMI-versie.
+
+[Unreleased]: https://github.com/FritsdeGroot/ggm-naar-openmetadata-/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/FritsdeGroot/ggm-naar-openmetadata-/releases/tag/v1.0.0

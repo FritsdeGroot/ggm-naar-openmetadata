@@ -33,6 +33,7 @@ import argparse
 from datetime import datetime
 import requests
 
+from voortgang import Voortgang, instrumenteer_sessie
 from om_ggm_metadata import (
     ensure_custom_properties, haal_alle_termen, TermIndex,
     hernoem_term, werk_ggm_metadata_bij, TERM_FIELDS,
@@ -844,6 +845,9 @@ Voorbeelden:
         print(f"Relatiebestand geladen: {len(relaties_map)} objecttypen, {total_rel} relatie-regels.\n")
 
     session = get_session()
+    voortgang = Voortgang(hartslag=60)
+    instrumenteer_sessie(session, voortgang)
+    voortgang.fase("Voorbereiden (glossary, tags)")
     glossary = get_or_create_glossary(session)
     glossary_fqn = glossary["fullyQualifiedName"]
     glossary_id = glossary["id"]
@@ -853,8 +857,14 @@ Voorbeelden:
     print(f"Classification '{CLASSIFICATION_NAME}' met {len(tag_fqns)} hoofddomein-tags klaar.\n")
 
     # Correctie-pass: hernoem/verwijder reeds geladen termen die een correctie nodig hebben
+    voortgang.fase("Bestaande termen ophalen")
+    # Eén keer alle termen ophalen (met alle velden); de correctie-pass en de
+    # EAID-index gebruiken dezelfde lijst. Alleen als de correctie-pass iets
+    # wijzigt, wordt opnieuw opgehaald.
+    alle_termen = haal_alle_termen(session, glossary_id)
+    terms_by_name = {t["name"]: t for t in alle_termen}
+    voortgang.fase("Correctie-pass")
     print("Controleren op reeds geladen termen die hernoemd of verwijderd moeten worden...")
-    terms_by_name = list_all_glossary_terms(session, glossary_id)
     n_renamed = 0
     n_deleted = 0
 
@@ -911,9 +921,12 @@ Voorbeelden:
     else:
         if not release:
             sys.exit("Geef --versie of --release op; die waarde wordt vastgelegd in ggmRelease.")
+        voortgang.fase("Custom properties en EAID-index")
         nieuw = ensure_custom_properties(session)
         print(f"Custom properties op glossaryTerm: {', '.join(nieuw) + ' aangemaakt' if nieuw else 'aanwezig'}.")
-        alle_termen = haal_alle_termen(session, glossary_id)
+        if n_renamed or n_deleted:
+            print("  Correctie-pass heeft termen gewijzigd; termen opnieuw ophalen voor de index.")
+            alle_termen = haal_alle_termen(session, glossary_id)
         index = TermIndex(alle_termen)
         print(f"Index: {len(alle_termen)} bestaande termen, {len(index.op_eaid)} met ggmEaId.")
         if index.dubbele_eaid:
@@ -935,12 +948,14 @@ Voorbeelden:
             domain_cache[fqn] = domain_exists(session, fqn)
         return domain_cache[fqn]
 
+    voortgang.fase("Laden objecttypen", totaal=sum(1 for o in objecttypen if o["domein"] in te_laden))
     for hoofddomein in te_laden:
         items = [o for o in objecttypen if o["domein"] == hoofddomein]
         print(f"=== Hoofddomein: {hoofddomein} ({len(items)} objecttypen) ===")
         tag_fqn = tag_fqns.get(hoofddomein)
 
         for obj in items:
+            voortgang.stap(obj["naam"])
             subdomain_fqn = resolve_subdomain_fqn(obj["pad"], path_mapping)
             domain_fqn = DOMAIN_FQN_OVERRIDES.get(subdomain_fqn, subdomain_fqn) if subdomain_fqn else hoofddomein
 
@@ -964,7 +979,7 @@ Voorbeelden:
                 args.forceer_omschrijving, related_term_fqns,
                 ggm_item=obj, index=index, release=release, rapport=rapport,
             )
-            print(f"  [{status}] {fqn}  (domain: {domain_fqn})")
+            print(f"  {voortgang.prefix()}[{status}] {fqn}  (domain: {domain_fqn})")
             if status.startswith("FOUT"):
                 continue
 
@@ -992,8 +1007,10 @@ Voorbeelden:
         print()
 
     if rapport is not None:
+        voortgang.fase("Runrapport")
         schrijf_runrapport(rapport, index, v, alle_domeinen=bool(args.alle))
 
+    voortgang.samenvatting()
     print("Klaar.")
 
 

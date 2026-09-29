@@ -35,6 +35,14 @@ Gepland als v1.1.0. Nog niet getest tegen een live OpenMetadata-instantie.
   tagspellingen samen (`GEMMA url`/`GEMMA-URL`/`GEMMA_url`).
 - `ggm_eaid_migratie.py`: eenmalige migratie van v1.0.0-termen, standaard als
   droogloop.
+- **Voortgang en hartslag** (`voortgang.py`): fasen met tijdstempel, een
+  prefix per objecttype (`[ 123/947  13% | 05:12 | nog ~31m]`), een
+  hartslagregel na 60 seconden zonder uitvoer (fase, positie, aantal
+  API-aanroepen, eventueel lang lopende aanroep) en aan het eind de duur en
+  het aantal API-aanroepen per fase. Uitvoer wordt per regel doorgegeven, ook
+  bij `| tee`.
+- API-aanroepen krijgen een time-out (10 s verbinden, 180 s lezen); GET-aanroepen
+  worden bij 502/503/504 of een verbroken verbinding tot drie keer herhaald.
 - `--glossary <naam>`: laden in een andere glossary, bijv. om naast een
   bestaande te testen. `--release`, `--zonder-ggm-metadata`.
 
@@ -43,6 +51,8 @@ Gepland als v1.1.0. Nog niet getest tegen een live OpenMetadata-instantie.
 - **Definitiebron objecttypen**: de EA-documentatie is leidend (dit toont ook
   gemeentelijkgegevensmodel.nl), met terugval op `GEMMA definitie`.
 - `list_all_glossary_terms` haalt alle termen gepagineerd op (was maximaal 1000).
+- Bestaande termen worden één keer opgehaald voor zowel de correctie-pass als
+  de EAID-index (was twee keer); pagina's van 500 termen met voortgang per pagina.
 
 ### Opgelost
 

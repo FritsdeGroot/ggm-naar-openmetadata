@@ -27,6 +27,7 @@ bulkbewerking, waardoor ze geen betrouwbaar wijzigingssignaal zijn.
 """
 
 import json
+import time
 
 CUSTOM_PROPERTIES = [
     ("ggmEaId", "string",
@@ -98,20 +99,27 @@ def ensure_custom_properties(session):
 # Termen ophalen en indexeren
 # ==============================================================================
 
-def haal_alle_termen(session, glossary_id, fields=TERM_FIELDS):
+def haal_alle_termen(session, glossary_id, fields=TERM_FIELDS, toon_voortgang=True, paginagrootte=500):
     """Haal ALLE termen van een glossary op, gepagineerd (v1.0.0 haalde er
-    maximaal 1000 op, terwijl GGM_Objecttypen er ruim 5.000 bevat)."""
+    maximaal 1000 op, terwijl GGM_Objecttypen er ruim 5.000 bevat).
+    Toont per pagina hoeveel termen al binnen zijn en hoe lang dat duurde."""
     termen = []
     after = None
     while True:
-        params = {"glossary": glossary_id, "limit": 1000, "fields": fields}
+        params = {"glossary": glossary_id, "limit": paginagrootte, "fields": fields}
         if after:
             params["after"] = after
+        t = time.monotonic()
         resp = session.get(f"{session.base_url}/api/v1/glossaryTerms", params=params)
         resp.raise_for_status()
         body = resp.json()
         termen.extend(body.get("data", []))
-        after = (body.get("paging") or {}).get("after")
+        paging = body.get("paging") or {}
+        after = paging.get("after")
+        if toon_voortgang:
+            totaal = paging.get("total")
+            print(f"  … {len(termen)}" + (f"/{totaal}" if totaal else "")
+                  + f" termen opgehaald ({time.monotonic() - t:.1f}s voor deze pagina)")
         if not after:
             break
     return termen

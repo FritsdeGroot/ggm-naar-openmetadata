@@ -86,6 +86,7 @@ ggm-naar-openmetadata/
 | `ggm_eaid_migratie.py` | Eenmalige migratie v1.0.0 → v1.1.0: koppelt EAID en herkomstmetadata aan bestaande termen (standaard droogloop) |
 | `ggm_xmi_metadata.py` | Module: leest EA-metadata en tagged values uit de XMI (gebruikt door `extract_ggm.py`) |
 | `om_ggm_metadata.py` | Module: custom properties, EAID-index en herkomstmetadata in OpenMetadata |
+| `voortgang.py` | Module: voortgang, hartslag, time-outs en API-meting tijdens lange runs |
 
 ### Bronbestanden in `data/<versie>/`
 
@@ -210,6 +211,26 @@ release niet meer voorkomen. Die worden nooit automatisch verwijderd.
 
 **Rechten.** Het aanmaken van custom properties vereist Create/EditAll op het
 resource `type` voor het bot-account (of een admin-token bij de eerste run).
+
+### Lange runs
+
+Een volledige run (`--alle --met-attributen --met-relaties`) duurt afhankelijk
+van de omgeving tot ongeveer een uur. Het script toont per objecttype de
+voortgang met een geschatte resttijd, en na 60 seconden zonder uitvoer een
+hartslagregel. Aan het eind volgt per fase de duur en het aantal API-aanroepen.
+
+Draai lange runs via SSH in `tmux`, zodat een verbroken verbinding de run niet
+afbreekt:
+
+```bash
+tmux new -s ggm                    # nieuwe sessie
+python3 ggm_objecttypen_naar_openmetadata.py ... 2>&1 | tee run.log
+# Ctrl-b, daarna d  -> sessie loskoppelen; de run loopt door
+tmux attach -t ggm                 # later weer aankoppelen
+```
+
+Een afgebroken run is veilig opnieuw te starten: termen worden via EAID en
+naam herkend, dus er ontstaan geen dubbelingen.
 
 ### Migratie van v1.0.0
 

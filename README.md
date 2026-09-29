@@ -214,8 +214,14 @@ resource `type` voor het bot-account (of een admin-token bij de eerste run).
 
 ### Lange runs
 
-Een volledige run (`--alle --met-attributen --met-relaties`) duurt afhankelijk
-van de omgeving tot ongeveer een uur. Het script toont per objecttype de
+Gemeten op OpenMetadata 2.0.2 (VM, 4 vCPU):
+
+| Situatie | Duur | API-aanroepen |
+|---|---|---|
+| Eerste lading in een lege omgeving (`--alle --met-attributen --met-relaties`) | ~17 min | ~14.100 (gem. 73 ms) |
+| Herlading zonder wijzigingen | ~10 s | ~160 |
+
+De duur hangt af van de omgeving. Het script toont per objecttype de
 voortgang met een geschatte resttijd, en na 60 seconden zonder uitvoer een
 hartslagregel. Aan het eind volgt per fase de duur en het aantal API-aanroepen.
 

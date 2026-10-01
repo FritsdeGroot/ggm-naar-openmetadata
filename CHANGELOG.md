@@ -7,7 +7,9 @@ en dit project volgt [Semantic Versioning](https://semver.org/lang/nl/).
 
 ## [Unreleased]
 
-Gepland als v1.1.0. Nog niet getest tegen een live OpenMetadata-instantie.
+## [1.1.0] - 2026-10-01
+
+Getest op een lege OpenMetadata 2.0.2-omgeving: eerste lading ~17 min (~14.100 API-aanroepen), herlading zonder wijzigingen ~10 s, 0 fouten. Eén run volstaat; OpenMetadata toont relaties tweezijdig.
 
 ### Toegevoegd
 
@@ -162,5 +164,6 @@ OpenMetadata Community Edition.
   filteringsverschil is in `extract_ggm.py` (bijv. `DIAGRAM_PREFIX_PATTERN` of
   `clean_naam`) of een verschil in de gebruikte XMI-versie.
 
-[Unreleased]: https://github.com/FritsdeGroot/ggm-naar-openmetadata-/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/FritsdeGroot/ggm-naar-openmetadata-/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/FritsdeGroot/ggm-naar-openmetadata-/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/FritsdeGroot/ggm-naar-openmetadata-/releases/tag/v1.0.0

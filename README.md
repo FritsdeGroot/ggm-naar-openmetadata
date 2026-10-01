@@ -15,9 +15,9 @@ Het resultaat is een doorzoekbare, domeingestructureerde **data-glossary** met:
 ## Vereisten
 
 - Python 3.9+
-- `pip install requests --break-system-packages`
-- Self-hosted OpenMetadata Community Edition versie 2.x (getest op 2.0). Let op: versie 1.x wordt niet ondersteund — de relatedTerms API is gewijzigd tussen 1.x en 2.x.
-- Een bot/service-account met `Create`/`EditAll`/`ViewAll`-rechten op: Domain, Glossary, GlossaryTerm, Classification en Tag
+- `sudo apt install python3-requests python3-yaml` (of via pip: `pip install requests pyyaml --break-system-packages`)
+- Self-hosted OpenMetadata Community Edition versie 2.x (getest op 2.0.2). Let op: versie 1.x wordt niet ondersteund — de relatedTerms API is gewijzigd tussen 1.x en 2.x.
+- Een bot/service-account met `Create`/`EditAll`/`ViewAll`-rechten op: Domain, Glossary, GlossaryTerm, Classification en Tag. Voor de eerste run ook `Create`/`EditAll` op Type, om de custom properties aan te maken (of doe de eerste run met een admin-token)
 
 ---
 
